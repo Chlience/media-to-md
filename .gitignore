@@ -1,0 +1,30 @@
+# OS/editor noise
+.DS_Store
+
+# OMX runtime, plans, logs, and local coordination artifacts
+.omx/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local environment/config/data
+.env
+.env.*
+!.env.example
+backend/.env
+backend/config.json
+.data/
+data/
+uploads/
+outputs/
+backend/.data/
+
+# Frontend local installs/build output
+frontend/node_modules/
+frontend/dist/
+frontend/.omx/

@@ -1,0 +1,26 @@
+{
+  "data_root": ".data/media-to-md",
+  "api_base_url": "http://localhost:8000/api",
+  "whisperx_model": "small",
+  "whisperx_model_dir": ".data/models",
+  "nltk_data_dir": ".data/models/nltk_data",
+  "model_cache_only": false,
+  "whisperx_args": {
+    "batch_size": 8,
+    "compute_type": "default"
+  },
+  "opendataloader_pdf_args": {
+    "format": [
+      "markdown",
+      "text"
+    ],
+    "image_output": "off",
+    "image_format": "png",
+    "table_method": "default",
+    "reading_order": "xycut",
+    "threads": 1,
+    "hybrid": "off"
+  },
+  "admin_username": "admin",
+  "admin_password": "change-me-before-use"
+}
