@@ -28,7 +28,12 @@ class WhisperXCommandBuilderTests(unittest.TestCase):
             model_dir=Path("/models"), config_args=("--batch_size", "16")
         )
         options = WhisperXOptions(
-            model="large-v3", language="en", diarize=True, model_cache_only=True
+            model="large-v3",
+            language="en",
+            diarize=True,
+            min_speakers=1,
+            max_speakers=4,
+            model_cache_only=True,
         )
 
         argv = build_whisperx_argv(Path("/in/audio.wav"), Path("/out"), options, config)
@@ -42,6 +47,16 @@ class WhisperXCommandBuilderTests(unittest.TestCase):
         self.assertIn("--language", argv)
         self.assertIn("en", argv)
         self.assertIn("--diarize", argv)
+        min_speakers_index = argv.index("--min_speakers")
+        self.assertEqual(
+            argv[min_speakers_index : min_speakers_index + 2],
+            ["--min_speakers", "1"],
+        )
+        max_speakers_index = argv.index("--max_speakers")
+        self.assertEqual(
+            argv[max_speakers_index : max_speakers_index + 2],
+            ["--max_speakers", "4"],
+        )
         self.assertIn("--model_dir", argv)
         self.assertIn("/models", argv)
         cache_only_index = argv.index("--model_cache_only")
@@ -75,9 +90,13 @@ class WhisperXCommandBuilderTests(unittest.TestCase):
             validate_options(WhisperXOptions(language="en;rm"))
         with self.assertRaisesRegex(WhisperXRunnerError, "Raw extra"):
             validate_options(WhisperXOptions(extra_args=("--danger",)))
+        with self.assertRaisesRegex(WhisperXRunnerError, "min_speakers"):
+            validate_options(
+                WhisperXOptions(diarize=True, min_speakers=3, max_speakers=2)
+            )
 
     def test_configured_local_model_path_is_allowed(self):
-        local_model = "/home/chlience/model/faster-whisper-large-v2"
+        local_model = "/models/faster-whisper-large-v2"
         config = WhisperXRunnerConfig(
             model_dir=Path("/models"), default_model=local_model
         )
@@ -362,6 +381,8 @@ class JobStorageWhisperXRunnerTests(unittest.TestCase):
                 model="medium",
                 language="en",
                 diarize=True,
+                min_speakers=1,
+                max_speakers=3,
                 model_cache_only=True,
                 output_formats=["txt", "json"],
             )
@@ -370,6 +391,8 @@ class JobStorageWhisperXRunnerTests(unittest.TestCase):
         self.assertEqual(options.model, "medium")
         self.assertEqual(options.language, "en")
         self.assertTrue(options.diarize)
+        self.assertEqual(options.min_speakers, 1)
+        self.assertEqual(options.max_speakers, 3)
         self.assertTrue(options.model_cache_only)
         self.assertEqual(options.output_formats, ("txt", "json"))
 

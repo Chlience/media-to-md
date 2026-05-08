@@ -30,6 +30,16 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function parseOptionalSpeakerCount(value: string, label: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = Number(trimmed);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new Error(`${label}必须是大于等于 1 的整数。`);
+  }
+  return parsed;
+}
+
 const whisperxPhaseSteps = [
   {
     code: 'queued',
@@ -60,6 +70,11 @@ const whisperxPhaseSteps = [
     code: 'alignment',
     label: '时间戳对齐',
     detail: '执行 alignment，整理字幕时间戳。',
+  },
+  {
+    code: 'diarization',
+    label: '说话人分离',
+    detail: '为转写片段分配 SPEAKER 标签。',
   },
   {
     code: 'finalizing',
@@ -196,8 +211,11 @@ export function WorkbenchPage() {
   const inputRef = useRef<HTMLInputElement>(null);
   const pollerRef = useRef<{ stop(): void } | null>(null);
   const [taskType, setTaskType] = useState<TaskType>(taskTypeWhisperx);
-  const [languageMode, setLanguageMode] = useState<LanguageMode>('manual');
-  const [language, setLanguage] = useState('zh');
+  const [languageMode, setLanguageMode] = useState<LanguageMode>('auto');
+  const [language, setLanguage] = useState('');
+  const [diarize, setDiarize] = useState(false);
+  const [minSpeakers, setMinSpeakers] = useState('');
+  const [maxSpeakers, setMaxSpeakers] = useState('');
   const [cleanupStrength, setCleanupStrength] =
     useState<PdfCleanupStrength>(pdfCleanupStrengthBalanced);
   const [file, setFile] = useState<File | null>(null);
@@ -248,6 +266,20 @@ export function WorkbenchPage() {
     setSubmitting(true);
     setError(null);
     try {
+      const shouldDiarize = taskType === taskTypeWhisperx && diarize;
+      const parsedMinSpeakers = shouldDiarize
+        ? parseOptionalSpeakerCount(minSpeakers, '最少说话人数')
+        : null;
+      const parsedMaxSpeakers = shouldDiarize
+        ? parseOptionalSpeakerCount(maxSpeakers, '最多说话人数')
+        : null;
+      if (
+        parsedMinSpeakers !== null &&
+        parsedMaxSpeakers !== null &&
+        parsedMinSpeakers > parsedMaxSpeakers
+      ) {
+        throw new Error('最少说话人数不能大于最多说话人数。');
+      }
       const uploaded = await api.uploadAndStart({
         file: fileToUploadable(file),
         options:
@@ -255,7 +287,10 @@ export function WorkbenchPage() {
             ? { taskType: taskTypePdf, markdownCleanupStrength: cleanupStrength }
             : {
                 taskType: taskTypeWhisperx,
-                language: languageMode === 'auto' ? 'auto' : language.trim() || 'zh',
+                language: languageMode === 'auto' ? 'auto' : language.trim() || 'auto',
+                diarize,
+                minSpeakers: parsedMinSpeakers,
+                maxSpeakers: parsedMaxSpeakers,
               },
       });
       const initial: JobStatus = {
@@ -366,8 +401,52 @@ export function WorkbenchPage() {
                       className="input"
                       value={language}
                       onChange={(event) => setLanguage(event.target.value)}
-                      placeholder="例如 en、zh、ja"
+                      placeholder="默认 auto；手动可填 en、zh、ja"
                       disabled={languageMode === 'auto'}
+                    />
+                  </div>
+                  <div className="field">
+                    <label className="label" htmlFor="diarize-enabled">
+                      说话人分离
+                    </label>
+                    <select
+                      id="diarize-enabled"
+                      className="select"
+                      value={String(diarize)}
+                      onChange={(event) => setDiarize(event.target.value === 'true')}
+                    >
+                      <option value="false">关闭</option>
+                      <option value="true">开启</option>
+                    </select>
+                  </div>
+                  <div className="field">
+                    <label className="label" htmlFor="min-speakers">
+                      最少说话人数
+                    </label>
+                    <input
+                      id="min-speakers"
+                      className="input mono"
+                      type="number"
+                      min="1"
+                      value={minSpeakers}
+                      onChange={(event) => setMinSpeakers(event.target.value)}
+                      placeholder="自动"
+                      disabled={!diarize}
+                    />
+                  </div>
+                  <div className="field">
+                    <label className="label" htmlFor="max-speakers">
+                      最多说话人数
+                    </label>
+                    <input
+                      id="max-speakers"
+                      className="input mono"
+                      type="number"
+                      min="1"
+                      value={maxSpeakers}
+                      onChange={(event) => setMaxSpeakers(event.target.value)}
+                      placeholder="自动"
+                      disabled={!diarize}
                     />
                   </div>
                   <div className="field field-full">
@@ -377,7 +456,7 @@ export function WorkbenchPage() {
                     <input
                       id="media-output-formats"
                       className="input mono"
-                      value="output_formats=txt,srt,vtt"
+                      value={diarize ? 'output_formats=txt,srt,vtt,json' : 'output_formats=txt,srt,vtt'}
                       readOnly
                     />
                   </div>

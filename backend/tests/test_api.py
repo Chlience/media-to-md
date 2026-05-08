@@ -371,7 +371,14 @@ def test_admin_can_update_backend_config(monkeypatch, tmp_path):
             "whisperx_model_dir": "/models",
             "nltk_data_dir": "/models/nltk",
             "model_cache_only": True,
-            "whisperx_args": {"batch_size": 12, "compute_type": "int8"},
+            "whisperx_args": {
+                "batch_size": 12,
+                "compute_type": "int8",
+                "diarize_model": "/models/pyannote",
+                "min_speakers": 1,
+                "max_speakers": 4,
+                "speaker_embeddings": True,
+            },
         },
     )
 
@@ -382,8 +389,27 @@ def test_admin_can_update_backend_config(monkeypatch, tmp_path):
         "whisperx_model_dir": "/models",
         "model_cache_only": True,
         "nltk_data_dir": "/models/nltk",
-        "whisperx_args": ["--batch_size", "12", "--compute_type", "int8"],
-        "whisperx_args_config": {"batch_size": 12, "compute_type": "int8"},
+        "whisperx_args": [
+            "--batch_size",
+            "12",
+            "--compute_type",
+            "int8",
+            "--diarize_model",
+            "/models/pyannote",
+            "--min_speakers",
+            "1",
+            "--max_speakers",
+            "4",
+            "--speaker_embeddings",
+        ],
+        "whisperx_args_config": {
+            "batch_size": 12,
+            "compute_type": "int8",
+            "diarize_model": "/models/pyannote",
+            "min_speakers": 1,
+            "max_speakers": 4,
+            "speaker_embeddings": True,
+        },
         "opendataloader_pdf_args": [
             "--format",
             "markdown,text",
@@ -400,6 +426,7 @@ def test_admin_can_update_backend_config(monkeypatch, tmp_path):
     assert '"admin_password": "secret-pass"' in saved
     assert '"api_base_url": "http://localhost:8000/api"' in saved
     assert '"batch_size": 12' in saved
+    assert '"diarize_model": "/models/pyannote"' in saved
     assert data_root.exists()
 
     upload_response = client.post(
@@ -522,6 +549,49 @@ def test_json_artifact_is_exposed_only_when_requested(tmp_path):
     assert runner.started == [job_id]
     assert {a["format"] for a in results["artifacts"]} == {"txt", "json"}
     assert client.get(f"/api/jobs/{job_id}/download/result.json").status_code == 200
+
+
+def test_whisperx_upload_accepts_diarization_speaker_range(tmp_path):
+    client, _, _ = make_client(tmp_path)
+
+    response = client.post(
+        "/api/jobs/upload",
+        files={"file": ("sample.wav", b"abc", "audio/wav")},
+        data={
+            "model": "small",
+            "language": "zh",
+            "diarize": "true",
+            "min_speakers": "1",
+            "max_speakers": "4",
+            "output_formats": "txt,srt,vtt,json",
+        },
+    )
+
+    assert response.status_code == 201, response.text
+    status = client.get(f"/api/jobs/{response.json()['job_id']}/status").json()
+    assert status["options"]["diarize"] is True
+    assert status["options"]["min_speakers"] == 1
+    assert status["options"]["max_speakers"] == 4
+    assert status["options"]["output_formats"] == ["txt", "srt", "vtt", "json"]
+
+
+def test_whisperx_upload_rejects_invalid_speaker_range(tmp_path):
+    client, _, _ = make_client(tmp_path)
+
+    response = client.post(
+        "/api/jobs/upload",
+        files={"file": ("sample.wav", b"abc", "audio/wav")},
+        data={
+            "model": "small",
+            "language": "zh",
+            "diarize": "true",
+            "min_speakers": "3",
+            "max_speakers": "2",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "min_speakers" in response.text
 
 
 def test_upload_rejects_invalid_whisperx_output_format(tmp_path):

@@ -92,7 +92,7 @@ ffmpeg -version
 
 ### 允许的 WhisperX 参数
 
-`batch_size`, `device`, `device_index`, `compute_type`, `threads`, `chunk_size`, `vad_method`, `vad_onset`, `vad_offset`, `align_model`
+`batch_size`, `device`, `device_index`, `compute_type`, `threads`, `chunk_size`, `vad_method`, `vad_onset`, `vad_offset`, `align_model`, `diarize_model`, `min_speakers`, `max_speakers`, `speaker_embeddings`
 
 这些参数会转换为对应的 WhisperX CLI flag，例如：
 

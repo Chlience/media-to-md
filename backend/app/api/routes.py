@@ -112,6 +112,7 @@ _WHISPERX_PHASE_LABELS: dict[str, tuple[str, str]] = {
     "vad": ("语音活动检测", "正在识别音频中的有效语音片段。"),
     "transcription": ("语音转文字", "正在把语音片段转写为文本。"),
     "alignment": ("时间戳对齐", "正在对齐词级/片段级时间戳并整理字幕。"),
+    "diarization": ("说话人分离", "正在为片段和词级结果分配说话人标签。"),
     "finalizing": ("整理输出文件", "转写已完成，正在写入并收集可下载产物。"),
     "succeeded": ("已完成", "任务已成功完成，可下载输出文件。"),
     "failed": ("失败", "任务失败，请进入管理员页面查看错误详情和日志。"),
@@ -139,6 +140,8 @@ def _whisperx_runtime_phase(
         return _phase("cancelled")
 
     log = storage.read_log(manifest.job_id).lower()
+    if "performing diarization" in log:
+        return _phase("diarization")
     if "performing alignment" in log:
         return _phase("alignment")
     if (
@@ -330,6 +333,8 @@ async def upload_job(
     model: str | None = Form(None),
     language: str | None = Form("auto"),
     diarize: bool = Form(False),
+    min_speakers: int | None = Form(None),
+    max_speakers: int | None = Form(None),
     model_cache_only: bool | None = Form(None),
     output_formats: str | None = Form(None),
     task_type: str = Form("whisperx"),
@@ -367,17 +372,22 @@ async def upload_job(
             status_code=400,
             detail="Model must be a known WhisperX model or the backend-configured local model path.",
         )
-    options = JobOptions(
-        task_type="whisperx",
-        model=selected_model,
-        language=language,
-        diarize=diarize,
-        model_dir=settings.whisperx_model_dir,
-        model_cache_only=settings.model_cache_only
-        if model_cache_only is None
-        else model_cache_only,
-        output_formats=_normalize_whisperx_output_formats(output_formats),
-    )
+    try:
+        options = JobOptions(
+            task_type="whisperx",
+            model=selected_model,
+            language=language,
+            diarize=diarize,
+            min_speakers=min_speakers,
+            max_speakers=max_speakers,
+            model_dir=settings.whisperx_model_dir,
+            model_cache_only=settings.model_cache_only
+            if model_cache_only is None
+            else model_cache_only,
+            output_formats=_normalize_whisperx_output_formats(output_formats),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     manifest = service.create_job(file.file, file.filename or "upload", options)
     return JobCreated(job_id=manifest.job_id, status=manifest.status)
 

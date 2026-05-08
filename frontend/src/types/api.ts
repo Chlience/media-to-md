@@ -46,6 +46,8 @@ export interface WhisperxJobOptions {
   language: string;
   model?: string | null;
   diarize?: boolean | null;
+  minSpeakers?: number | null;
+  maxSpeakers?: number | null;
   modelCacheOnly?: boolean | null;
 }
 
@@ -156,15 +158,24 @@ export function jobOptionsToFormFields(options: JobOptions): Record<string, stri
     };
   }
 
+  const requestedFormats = options.diarize
+    ? [...whisperxOutputFormats, 'json']
+    : [...whisperxOutputFormats];
   const fields: Record<string, string> = {
     task_type: taskTypeWhisperx,
     language: options.language === 'auto' ? 'auto' : options.language,
-    output_formats: whisperxOutputFormats.join(','),
+    output_formats: requestedFormats.join(','),
   };
   const selectedModel = options.model?.trim();
   if (selectedModel) fields.model = selectedModel;
   if (options.diarize !== undefined && options.diarize !== null) {
     fields.diarize = String(options.diarize);
+  }
+  if (options.diarize && options.minSpeakers !== undefined && options.minSpeakers !== null) {
+    fields.min_speakers = String(options.minSpeakers);
+  }
+  if (options.diarize && options.maxSpeakers !== undefined && options.maxSpeakers !== null) {
+    fields.max_speakers = String(options.maxSpeakers);
   }
   if (options.modelCacheOnly !== undefined && options.modelCacheOnly !== null) {
     fields.model_cache_only = String(options.modelCacheOnly);

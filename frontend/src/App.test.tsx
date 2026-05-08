@@ -33,6 +33,17 @@ describe('hash routing shell', () => {
     expect(screen.getByText('从音视频文件中提取字幕与转写文本')).toBeInTheDocument();
     expect(screen.getByText('接受常见的音频/视频文件。')).toBeInTheDocument();
     expect(screen.queryByText(/audio\/\*|video\/\*/)).not.toBeInTheDocument();
+    const languageModeSelect = screen.getByLabelText('语言识别') as HTMLSelectElement;
+    expect(languageModeSelect.value).toBe('auto');
+    expect(screen.getByLabelText('语言代码')).toBeDisabled();
+    expect(screen.getByLabelText('语言代码')).toHaveAttribute('placeholder', '默认 auto；手动可填 en、zh、ja');
+    const diarizeSelect = screen.getByLabelText('说话人分离') as HTMLSelectElement;
+    expect(diarizeSelect.value).toBe('false');
+    expect(screen.getByDisplayValue('output_formats=txt,srt,vtt')).toBeInTheDocument();
+    fireEvent.change(diarizeSelect, { target: { value: 'true' } });
+    expect(screen.getByDisplayValue('output_formats=txt,srt,vtt,json')).toBeInTheDocument();
+    expect(screen.getByLabelText('最少说话人数')).not.toBeDisabled();
+    expect(screen.getByLabelText('最多说话人数')).not.toBeDisabled();
     const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
     const mediaFile = new File(['abc'], 'sample.mp3', { type: 'audio/mpeg' });
     fireEvent.change(fileInput, {
@@ -82,6 +93,11 @@ describe('hash routing shell', () => {
     expect(screen.queryByRole('heading', { name: '后端 API 配置' })).not.toBeInTheDocument();
     expect(configBox).toContainElement(screen.getByLabelText('API Base URL'));
     expect(within(configBox as HTMLElement).getByLabelText('API Base URL')).toHaveValue('http://localhost:8000/api');
+    expect(within(configBox as HTMLElement).getByLabelText('默认模型')).toHaveValue('small');
+    expect(within(configBox as HTMLElement).getByLabelText('Device')).toHaveValue('');
+    expect(within(configBox as HTMLElement).getByLabelText('Compute type')).toHaveValue('default');
+    expect(within(configBox as HTMLElement).getByLabelText('Batch size')).toHaveValue('8');
+    expect(within(configBox as HTMLElement).getByLabelText('仅使用本地缓存')).toHaveValue('false');
     expect(configBox).toContainElement(screen.getByRole('button', { name: '保存 config' }));
     expect(configBox?.textContent).not.toContain('读取 /admin/config · 保存 /admin/config · 展示当前生效参数');
     expect(screen.queryByLabelText('WhisperX args JSON')).not.toBeInTheDocument();

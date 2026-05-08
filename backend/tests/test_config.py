@@ -176,6 +176,10 @@ def test_whisperx_args_are_allowlisted_and_normalized():
             "compute_type": "int8",
             "device": "cuda",
             "chunk_size": 30,
+            "diarize_model": "/models/pyannote",
+            "min_speakers": "1",
+            "max_speakers": 4,
+            "speaker_embeddings": True,
         }
     ) == (
         "--batch_size",
@@ -186,12 +190,21 @@ def test_whisperx_args_are_allowlisted_and_normalized():
         "cuda",
         "--chunk_size",
         "30",
+        "--diarize_model",
+        "/models/pyannote",
+        "--min_speakers",
+        "1",
+        "--max_speakers",
+        "4",
+        "--speaker_embeddings",
     )
 
     with pytest.raises(ValueError, match="Unsupported whisperx_args key"):
         normalize_whisperx_args({"output_dir": "/tmp/unsafe"})
     with pytest.raises(ValueError, match="batch_size"):
         normalize_whisperx_args({"batch_size": 0})
+    with pytest.raises(ValueError, match="min_speakers"):
+        normalize_whisperx_args({"min_speakers": 3, "max_speakers": 2})
 
 
 def test_opendataloader_pdf_args_are_safe_allowlisted_and_normalized():

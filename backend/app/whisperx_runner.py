@@ -64,6 +64,8 @@ class WhisperXOptions:
     model: str = "small"
     language: str | None = None
     diarize: bool = False
+    min_speakers: int | None = None
+    max_speakers: int | None = None
     model_cache_only: bool = False
     output_formats: tuple[str, ...] = REQUIRED_OUTPUT_FORMATS
     extra_args: tuple[str, ...] = field(default_factory=tuple)
@@ -145,10 +147,44 @@ def validate_options(
             "Raw extra WhisperX arguments are disabled for subprocess safety.",
         )
 
+    try:
+        min_speakers = (
+            int(options.min_speakers) if options.min_speakers is not None else None
+        )
+        max_speakers = (
+            int(options.max_speakers) if options.max_speakers is not None else None
+        )
+    except (TypeError, ValueError) as exc:
+        raise WhisperXRunnerError(
+            WhisperXErrorKind.VALIDATION,
+            "WhisperX speaker counts must be integers.",
+        ) from exc
+    if min_speakers is not None and min_speakers < 1:
+        raise WhisperXRunnerError(
+            WhisperXErrorKind.VALIDATION,
+            "WhisperX min_speakers must be >= 1.",
+        )
+    if max_speakers is not None and max_speakers < 1:
+        raise WhisperXRunnerError(
+            WhisperXErrorKind.VALIDATION,
+            "WhisperX max_speakers must be >= 1.",
+        )
+    if (
+        min_speakers is not None
+        and max_speakers is not None
+        and min_speakers > max_speakers
+    ):
+        raise WhisperXRunnerError(
+            WhisperXErrorKind.VALIDATION,
+            "WhisperX min_speakers must be <= max_speakers.",
+        )
+
     return WhisperXOptions(
         model=model,
         language=language,
         diarize=bool(options.diarize),
+        min_speakers=min_speakers,
+        max_speakers=max_speakers,
         model_cache_only=bool(options.model_cache_only),
         output_formats=tuple(options.output_formats),
         extra_args=(),
@@ -201,6 +237,11 @@ def build_whisperx_argv(
     if normalized.model_cache_only:
         argv.extend(["--model_cache_only", "True"])
     argv.extend(config.config_args)
+    if normalized.diarize:
+        if normalized.min_speakers is not None:
+            argv.extend(["--min_speakers", str(normalized.min_speakers)])
+        if normalized.max_speakers is not None:
+            argv.extend(["--max_speakers", str(normalized.max_speakers)])
     return argv
 
 
@@ -301,6 +342,8 @@ def options_from_job_options(job_options) -> WhisperXOptions:
         model=getattr(job_options, "model", "small"),
         language=language,
         diarize=bool(getattr(job_options, "diarize", False)),
+        min_speakers=getattr(job_options, "min_speakers", None),
+        max_speakers=getattr(job_options, "max_speakers", None),
         model_cache_only=bool(getattr(job_options, "model_cache_only", False)),
         output_formats=output_formats,
     )

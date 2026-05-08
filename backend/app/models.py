@@ -9,6 +9,7 @@ from pydantic import (
     Field,
     field_serializer,
     field_validator,
+    model_validator,
 )
 
 
@@ -47,6 +48,8 @@ class WhisperXJobOptions(BaseModel):
     model: str = Field(default="small", min_length=1, max_length=4096)
     language: str | None = Field(default="auto", max_length=32)
     diarize: bool = False
+    min_speakers: int | None = Field(default=None, ge=1)
+    max_speakers: int | None = Field(default=None, ge=1)
     model_dir: str | None = None
     model_cache_only: bool = False
     output_formats: list[Literal["txt", "srt", "vtt", "json", "md", "markdown"]] = (
@@ -64,6 +67,16 @@ class WhisperXJobOptions(BaseModel):
         if any(part in value for part in ("/", "\\", "..")):
             raise ValueError("language must be a code, 'auto', or null")
         return value
+
+    @model_validator(mode="after")
+    def validate_speaker_range(self):
+        if (
+            self.min_speakers is not None
+            and self.max_speakers is not None
+            and self.min_speakers > self.max_speakers
+        ):
+            raise ValueError("min_speakers must be <= max_speakers")
+        return self
 
     @field_validator("model")
     @classmethod

@@ -136,7 +136,7 @@ MEDIA_TO_MD_API_BASE_URL=http://localhost:8000/api npm run dev
 
 `whisperx_args` 只保留常用且适合本地服务维护的参数：
 
-`batch_size`, `device`, `device_index`, `compute_type`, `threads`, `chunk_size`, `vad_method`, `vad_onset`, `vad_offset`, `align_model`
+`batch_size`, `device`, `device_index`, `compute_type`, `threads`, `chunk_size`, `vad_method`, `vad_onset`, `vad_offset`, `align_model`, `diarize_model`, `min_speakers`, `max_speakers`, `speaker_embeddings`
 
 ### OpenDataLoader PDF 可配置参数
 

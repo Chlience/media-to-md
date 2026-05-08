@@ -32,6 +32,10 @@ _CONFIG_ARG_SPECS: dict[str, dict[str, Any]] = {
     "vad_onset": {"flag": "--vad_onset", "type": "float", "min": 0},
     "vad_offset": {"flag": "--vad_offset", "type": "float", "min": 0},
     "align_model": {"flag": "--align_model", "type": "safe_str"},
+    "diarize_model": {"flag": "--diarize_model", "type": "safe_str"},
+    "min_speakers": {"flag": "--min_speakers", "type": "int", "min": 1},
+    "max_speakers": {"flag": "--max_speakers", "type": "int", "min": 1},
+    "speaker_embeddings": {"flag": "--speaker_embeddings", "type": "flag"},
 }
 
 _PDF_CONFIG_ARG_SPECS: dict[str, dict[str, Any]] = {
@@ -230,9 +234,20 @@ def _coerce_csv_int(value: Any, name: str) -> str:
 def _coerce_config_arg_value(name: str, value: Any, spec: dict[str, Any]) -> str | None:
     kind = spec["type"]
     if kind == "flag":
-        if not isinstance(value, bool):
-            raise ValueError(f"whisperx_args.{name} must be a boolean")
-        return None if value else ""
+        if isinstance(value, bool):
+            return None if value else ""
+        if isinstance(value, str) and value.strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+            "0",
+            "false",
+            "no",
+            "off",
+        }:
+            return None if _bool_config(value) else ""
+        raise ValueError(f"whisperx_args.{name} must be a boolean")
     if kind == "bool_value":
         return _coerce_bool_value(value, name)
     if kind == "int":
@@ -309,6 +324,7 @@ def normalize_whisperx_args(value: Any) -> tuple[str, ...]:
         raise ValueError("whisperx_args must be a JSON object")
 
     argv: list[str] = []
+    speaker_counts: dict[str, int] = {}
     for raw_name, raw_value in value.items():
         name = _normalize_arg_name(str(raw_name))
         spec = _CONFIG_ARG_SPECS.get(name)
@@ -320,9 +336,17 @@ def normalize_whisperx_args(value: Any) -> tuple[str, ...]:
         coerced = _coerce_config_arg_value(name, raw_value, spec)
         if coerced == "":
             continue
+        if name in {"min_speakers", "max_speakers"}:
+            speaker_counts[name] = int(coerced)
         argv.append(spec["flag"])
         if coerced is not None:
             argv.append(coerced)
+    if (
+        "min_speakers" in speaker_counts
+        and "max_speakers" in speaker_counts
+        and speaker_counts["min_speakers"] > speaker_counts["max_speakers"]
+    ):
+        raise ValueError("whisperx_args.min_speakers must be <= max_speakers")
     return tuple(argv)
 
 
