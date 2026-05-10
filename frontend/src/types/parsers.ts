@@ -50,13 +50,21 @@ function asUnknownRecord(value: unknown): Record<string, unknown> {
 export function parseBackendConfig(json: unknown): BackendConfig {
   const object = asObject(json, 'BackendConfig');
   const rawWhisperxArgs = object.whisperx_args;
+  const rawWhisperxCliArgs = object.whisperx_cli_args;
   const rawPdfArgs = object.opendataloader_pdf_args;
   const rawWhisperxArgsConfig = object.whisperx_args_config;
+  const rawWhisperxCliArgsConfig = object.whisperx_cli_args_config;
+  const rawWhisperxOpenaiArgsConfig = object.whisperx_openai_args_config;
   const rawPdfArgsConfig = object.opendataloader_pdf_args_config;
+  const whisperxArgsConfig = asUnknownRecord(rawWhisperxArgsConfig);
 
   return {
-    apiBaseUrl: asNullableString(object.api_base_url ?? object.apiBaseUrl),
     model: asString(object.whisperx_model ?? object.model, 'small'),
+    cliModel: asString(object.whisperx_cli_model ?? object.whisperx_model ?? object.model, 'small'),
+    openaiModel: asString(
+      object.whisperx_openai_model ?? object.whisperx_model ?? object.model,
+      'large-v2',
+    ),
     modelDir: asNullableString(object.whisperx_model_dir ?? object.model_dir),
     whisperxBackend: asWhisperxBackend(object.whisperx_backend),
     whisperxOpenaiBaseUrl: asNullableString(object.whisperx_openai_base_url),
@@ -64,7 +72,14 @@ export function parseBackendConfig(json: unknown): BackendConfig {
     whisperxOpenaiTimeoutSeconds: asNumber(object.whisperx_openai_timeout_seconds) ?? 3600,
     modelCacheOnly: asBoolean(object.model_cache_only, false),
     whisperxArgs: asStringArray(rawWhisperxArgs),
-    whisperxArgsConfig: asUnknownRecord(rawWhisperxArgsConfig),
+    whisperxArgsConfig,
+    whisperxCliArgs: asStringArray(rawWhisperxCliArgs),
+    whisperxCliArgsConfig: isRecord(rawWhisperxCliArgsConfig)
+      ? { ...rawWhisperxCliArgsConfig }
+      : whisperxArgsConfig,
+    whisperxOpenaiArgsConfig: isRecord(rawWhisperxOpenaiArgsConfig)
+      ? { ...rawWhisperxOpenaiArgsConfig }
+      : whisperxArgsConfig,
     pdfArgs: asStringArray(rawPdfArgs),
     pdfArgsConfig: asUnknownRecord(rawPdfArgsConfig),
     nltkDataDir: asNullableString(object.nltk_data_dir),

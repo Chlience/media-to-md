@@ -54,9 +54,13 @@ def configured_env(
     model_root.mkdir()
     monkeypatch.setenv("WHISPERX_DATA_ROOT", str(data_root))
     monkeypatch.delenv("WHISPERX_MODEL", raising=False)
+    monkeypatch.delenv("WHISPERX_CLI_MODEL", raising=False)
+    monkeypatch.delenv("WHISPERX_OPENAI_MODEL", raising=False)
     monkeypatch.setenv("WHISPERX_MODEL_DIR", str(model_root))
     monkeypatch.delenv("WHISPERX_NLTK_DATA_DIR", raising=False)
     monkeypatch.delenv("NLTK_DATA", raising=False)
+    monkeypatch.delenv("WHISPERX_CLI_ARGS_JSON", raising=False)
+    monkeypatch.delenv("WHISPERX_OPENAI_ARGS_JSON", raising=False)
     monkeypatch.setenv("WHISPERX_FAKE_RUNNER", "1")
     return data_root
 

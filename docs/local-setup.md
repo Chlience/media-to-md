@@ -71,6 +71,8 @@ opendataloader-pdf --help
 
 如果不想让 Media-to-MD 直接调用 `whisperx` CLI，可以先单独启动 `whisperx-openai-server`，再在 `backend/config.json` 中设置：
 
+本地部署可使用 <https://github.com/Chlience/whisperx-openai-server>。按该项目说明启动服务后，把 `whisperx_openai_base_url` 指向它的 `/v1` 地址即可。
+
 ```json
 {
   "whisperx_backend": "openai",
@@ -104,7 +106,7 @@ npm install
 MEDIA_TO_MD_API_BASE_URL=http://localhost:8000/api npm run dev
 ```
 
-`MEDIA_TO_MD_API_BASE_URL` 是前端启动/构建时变量；修改后需要重启 Vite dev server，生产包需要重新构建。如果使用 `.env` 文件，请放到 `frontend/.env`，或在启动命令前显式导出变量。若浏览器曾保存过旧地址，可在管理页点击“应用 API 地址到本浏览器”，或清理 localStorage 的 `media_to_md_api_base_url`。
+`MEDIA_TO_MD_API_BASE_URL` 是前端启动/构建时变量；修改后需要重启 Vite dev server，生产包需要重新构建。如果使用 `.env` 文件，请放到 `frontend/.env`，或在启动命令前显式导出变量。管理页只读展示当前启动配置，不再提供浏览器本地覆盖。
 
 访问：
 

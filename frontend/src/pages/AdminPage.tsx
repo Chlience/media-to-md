@@ -14,6 +14,7 @@ import {
 import { downloadTextFile } from '../services/jobs';
 import { AdminSessionStore } from '../services/session';
 import {
+  API_BASE_URL,
   BackendConfig,
   JobEvent,
   JobStatus,
@@ -22,7 +23,6 @@ import {
   taskTypeWhisperx,
   WhisperxBackend,
 } from '../types/api';
-import { normalizeApiBaseUrl, readApiBaseUrl, saveApiBaseUrl } from '../services/apiBaseUrl';
 
 const api = new WhisperXApiClient();
 const sessionStore = new AdminSessionStore();
@@ -33,6 +33,7 @@ const taskTypeViews = [
 ] as const;
 const pageSize = 10;
 const defaultWhisperxModel = 'small';
+const defaultOpenaiWhisperxModel = 'large-v2';
 const defaultModelCacheOnly = false;
 const defaultWhisperxBackend: WhisperxBackend = 'cli';
 const defaultOpenaiTimeoutSeconds = '3600';
@@ -51,9 +52,17 @@ const defaultWhisperxArgDisplay = {
 
 type Filter = (typeof filters)[number];
 type TaskTypeView = (typeof taskTypeViews)[number]['value'];
+type ConfigNotice = {
+  kind: 'success' | 'error';
+  message: string;
+} | null;
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function trimTrailingPunctuation(value: string): string {
+  return value.trim().replace(/[\s。．.!！?？:：;；,…，、]+$/u, '');
 }
 
 function shortJobId(jobId: string): string {
@@ -96,8 +105,8 @@ export function AdminPage() {
   const [taskTypeView, setTaskTypeView] = useState<TaskTypeView>(taskTypeWhisperx);
   const [page, setPage] = useState(1);
   const [config, setConfig] = useState<BackendConfig | null>(null);
-  const [apiBaseUrl, setApiBaseUrl] = useState(() => readApiBaseUrl());
-  const [model, setModel] = useState(defaultWhisperxModel);
+  const [cliModel, setCliModel] = useState(defaultWhisperxModel);
+  const [openaiModel, setOpenaiModel] = useState(defaultOpenaiWhisperxModel);
   const [modelDir, setModelDir] = useState('');
   const [whisperxBackend, setWhisperxBackend] = useState<WhisperxBackend>(defaultWhisperxBackend);
   const [openaiBaseUrl, setOpenaiBaseUrl] = useState('');
@@ -107,12 +116,14 @@ export function AdminPage() {
   const [openaiTimeoutSeconds, setOpenaiTimeoutSeconds] = useState(defaultOpenaiTimeoutSeconds);
   const [nltkDataDir, setNltkDataDir] = useState('');
   const [modelCacheOnly, setModelCacheOnly] = useState(defaultModelCacheOnly);
-  const [whisperxArgs, setWhisperxArgs] = useState('{}');
+  const [cliWhisperxArgs, setCliWhisperxArgs] = useState('{}');
+  const [openaiWhisperxArgs, setOpenaiWhisperxArgs] = useState('{}');
   const [pdfArgs, setPdfArgs] = useState('{}');
   const [selectedJob, setSelectedJob] = useState<JobStatus | null>(null);
   const [selectedEvents, setSelectedEvents] = useState<JobEvent[]>([]);
   const [selectedLog, setSelectedLog] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [configNotice, setConfigNotice] = useState<ConfigNotice>(null);
   const [busy, setBusy] = useState(false);
   const [loginOpen, setLoginOpen] = useState(() => !sessionStore.read()?.token);
 
@@ -143,6 +154,20 @@ export function AdminPage() {
   );
   const isWhisperxView = taskTypeView === taskTypeWhisperx;
   const emptyColSpan = isWhisperxView ? 10 : 7;
+  const visibleModel = whisperxBackend === 'openai' ? openaiModel : cliModel;
+  const visibleModelPlaceholder =
+    whisperxBackend === 'openai' ? defaultOpenaiWhisperxModel : defaultWhisperxModel;
+  const visibleWhisperxArgs =
+    whisperxBackend === 'openai' ? openaiWhisperxArgs : cliWhisperxArgs;
+  const setVisibleWhisperxArgs =
+    whisperxBackend === 'openai' ? setOpenaiWhisperxArgs : setCliWhisperxArgs;
+  const setVisibleModel = (value: string) => {
+    if (whisperxBackend === 'openai') {
+      setOpenaiModel(value);
+    } else {
+      setCliModel(value);
+    }
+  };
 
   const loadJobs = async (adminToken = token) => {
     if (!adminToken) return;
@@ -154,8 +179,8 @@ export function AdminPage() {
     if (!adminToken) return;
     const nextConfig = await api.fetchConfig(adminToken);
     setConfig(nextConfig);
-    setApiBaseUrl(normalizeApiBaseUrl(nextConfig.apiBaseUrl ?? readApiBaseUrl()));
-    setModel(nextConfig.model);
+    setCliModel(nextConfig.cliModel);
+    setOpenaiModel(nextConfig.openaiModel);
     setModelDir(nextConfig.modelDir ?? '');
     setWhisperxBackend(nextConfig.whisperxBackend);
     setOpenaiBaseUrl(nextConfig.whisperxOpenaiBaseUrl ?? '');
@@ -165,7 +190,8 @@ export function AdminPage() {
     setOpenaiTimeoutSeconds(String(nextConfig.whisperxOpenaiTimeoutSeconds || 3600));
     setNltkDataDir(nextConfig.nltkDataDir ?? '');
     setModelCacheOnly(nextConfig.modelCacheOnly);
-    setWhisperxArgs(jsonPreview(nextConfig.whisperxArgsConfig));
+    setCliWhisperxArgs(jsonPreview(nextConfig.whisperxCliArgsConfig));
+    setOpenaiWhisperxArgs(jsonPreview(nextConfig.whisperxOpenaiArgsConfig));
     setPdfArgs(jsonPreview(nextConfig.pdfArgsConfig));
   };
 
@@ -183,14 +209,6 @@ export function AdminPage() {
     setSelectedJob(null);
     setSelectedEvents([]);
     setSelectedLog('');
-  };
-
-  const applyBrowserApiBaseUrl = (): string => {
-    const normalized = saveApiBaseUrl(apiBaseUrl);
-    api.setBaseUrl(normalized);
-    setApiBaseUrl(normalized);
-    setError(null);
-    return normalized;
   };
 
   useEffect(() => {
@@ -216,12 +234,17 @@ export function AdminPage() {
     };
   }, [selectedJob]);
 
+  useEffect(() => {
+    if (!configNotice) return undefined;
+    const timer = window.setTimeout(() => setConfigNotice(null), 3200);
+    return () => window.clearTimeout(timer);
+  }, [configNotice]);
+
   const login = async (event: FormEvent) => {
     event.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      applyBrowserApiBaseUrl();
       const session = await api.loginAdmin({ username: username || 'admin', password });
       sessionStore.save(session);
       setToken(session.accessToken);
@@ -305,16 +328,16 @@ export function AdminPage() {
     if (!token) return;
     setBusy(true);
     setError(null);
+    setConfigNotice(null);
     try {
-      const apiBaseUrlForSave = applyBrowserApiBaseUrl();
       const parsedOpenaiTimeoutSeconds = Number(openaiTimeoutSeconds || defaultOpenaiTimeoutSeconds);
       if (!Number.isFinite(parsedOpenaiTimeoutSeconds) || parsedOpenaiTimeoutSeconds <= 0) {
         throw new Error('OpenAI timeout seconds 必须是大于 0 的数字。');
       }
       const nextConfig = await api.updateConfig({
         adminToken: token,
-        apiBaseUrl: apiBaseUrlForSave,
-        model,
+        cliModel,
+        openaiModel,
         modelDir,
         whisperxBackend,
         whisperxOpenaiBaseUrl: openaiBaseUrl,
@@ -323,22 +346,30 @@ export function AdminPage() {
         whisperxOpenaiTimeoutSeconds: parsedOpenaiTimeoutSeconds,
         modelCacheOnly,
         nltkDataDir,
-        whisperxArgs: parseJsonObject(whisperxArgs),
+        whisperxCliArgs: parseJsonObject(cliWhisperxArgs),
+        whisperxOpenaiArgs: parseJsonObject(openaiWhisperxArgs),
         pdfArgs: parseJsonObject(pdfArgs),
       });
-      const normalizedApiBaseUrl = saveApiBaseUrl(nextConfig.apiBaseUrl ?? apiBaseUrlForSave);
-      setApiBaseUrl(normalizedApiBaseUrl);
       setConfig(nextConfig);
       setWhisperxBackend(nextConfig.whisperxBackend);
+      setCliModel(nextConfig.cliModel);
+      setOpenaiModel(nextConfig.openaiModel);
       setOpenaiBaseUrl(nextConfig.whisperxOpenaiBaseUrl ?? '');
       setOpenaiApiKey('');
       setOpenaiApiKeyConfigured(nextConfig.whisperxOpenaiApiKeyConfigured);
       setOpenaiClearApiKey(false);
       setOpenaiTimeoutSeconds(String(nextConfig.whisperxOpenaiTimeoutSeconds || 3600));
-      setWhisperxArgs(jsonPreview(nextConfig.whisperxArgsConfig));
+      setCliWhisperxArgs(jsonPreview(nextConfig.whisperxCliArgsConfig));
+      setOpenaiWhisperxArgs(jsonPreview(nextConfig.whisperxOpenaiArgsConfig));
       setPdfArgs(jsonPreview(nextConfig.pdfArgsConfig));
+      setConfigNotice({ kind: 'success', message: '配置已保存' });
     } catch (nextError) {
-      setError(errorMessage(nextError));
+      const message = trimTrailingPunctuation(errorMessage(nextError));
+      setError(message);
+      setConfigNotice({
+        kind: 'error',
+        message: message ? `保存失败 ${message}` : '保存失败',
+      });
     } finally {
       setBusy(false);
     }
@@ -384,9 +415,9 @@ export function AdminPage() {
   };
 
   const whisperxArgValue = (key: string, defaultValue: string) =>
-    String(parseJsonObjectOrEmpty(whisperxArgs)[key] ?? defaultValue);
+    String(parseJsonObjectOrEmpty(visibleWhisperxArgs)[key] ?? defaultValue);
   const whisperxArgBooleanValue = (key: string, defaultValue: boolean) => {
-    const value = parseJsonObjectOrEmpty(whisperxArgs)[key];
+    const value = parseJsonObjectOrEmpty(visibleWhisperxArgs)[key];
     if (typeof value === 'boolean') return value;
     if (typeof value === 'string') {
       const normalized = value.trim().toLowerCase();
@@ -413,15 +444,15 @@ export function AdminPage() {
     setText(formatJsonObject(next));
   };
   const setWhisperxArg = (key: string, value: string) =>
-    setArgValue(whisperxArgs, setWhisperxArgs, key, value);
+    setArgValue(visibleWhisperxArgs, setVisibleWhisperxArgs, key, value);
   const setWhisperxBooleanArg = (key: string, value: boolean) => {
-    const next = parseJsonObjectOrEmpty(whisperxArgs);
+    const next = parseJsonObjectOrEmpty(visibleWhisperxArgs);
     if (value) {
       next[key] = true;
     } else {
       delete next[key];
     }
-    setWhisperxArgs(formatJsonObject(next));
+    setVisibleWhisperxArgs(formatJsonObject(next));
   };
   const setPdfArg = (key: string, value: string) =>
     setArgValue(pdfArgs, setPdfArgs, key, value);
@@ -481,6 +512,15 @@ export function AdminPage() {
 
         {error ? <div className="error-banner">{error}</div> : null}
         {error ? <div style={{ height: 16 }} /> : null}
+        {configNotice ? (
+          <div
+            className={`config-toast config-toast-${configNotice.kind}`}
+            role={configNotice.kind === 'error' ? 'alert' : 'status'}
+            aria-live={configNotice.kind === 'error' ? 'assertive' : 'polite'}
+          >
+            {configNotice.message}
+          </div>
+        ) : null}
 
         <div className="grid-12">
           <div className="span-12">
@@ -512,20 +552,22 @@ export function AdminPage() {
             <Box
               title="后端运行配置"
               actions={
-                <>
-                  <button className="btn" type="button" onClick={applyBrowserApiBaseUrl} disabled={busy}>
-                    应用 API 地址到本浏览器
-                  </button>
-                  <button className="btn btn-primary" type="button" onClick={() => void saveConfig()} disabled={!signedIn || busy}>
-                    保存 config
-                  </button>
-                </>
+                <button
+                  className="btn btn-primary"
+                  type="button"
+                  onClick={() => void saveConfig()}
+                  disabled={!signedIn || busy}
+                >
+                  保存 config
+                </button>
               }
             >
               <div className="form-grid">
                 <div className="field field-full">
-                  <label className="label" htmlFor="cfg-api-base-url">API Base URL</label>
-                  <input id="cfg-api-base-url" className="input mono" value={apiBaseUrl} onChange={(event) => setApiBaseUrl(event.target.value)} />
+                  <div className="status-note">
+                    前端 API 地址为启动配置 <span className="mono">{API_BASE_URL}</span>；如需修改，
+                    请用 <span className="mono">MEDIA_TO_MD_API_BASE_URL=...</span> 重新启动或重新构建前端。
+                  </div>
                 </div>
               </div>
               <div style={{ height: 16 }} />
@@ -535,7 +577,7 @@ export function AdminPage() {
                   <div className="config-inner">
                     <div className="form-grid">
                       <div className="field"><label className="label" htmlFor="cfg-whisperx-backend">执行方式</label><select id="cfg-whisperx-backend" className="select" value={whisperxBackend} onChange={(event) => setWhisperxBackend(event.target.value as WhisperxBackend)}><option value="cli">本机 CLI</option><option value="openai">OpenAI 兼容接口</option></select></div>
-                      <div className="field"><label className="label" htmlFor="cfg-model">默认模型</label><input id="cfg-model" className="input" value={model} placeholder={defaultWhisperxModel} onChange={(event) => setModel(event.target.value)} /></div>
+                      <div className="field"><label className="label" htmlFor="cfg-model">默认模型</label><input id="cfg-model" className="input" value={visibleModel} placeholder={visibleModelPlaceholder} onChange={(event) => setVisibleModel(event.target.value)} /></div>
                       {whisperxBackend === 'openai' ? (
                         <>
                           <div className="field field-full"><div className="status-note">OpenAI 模式只显示接口配置，以及会随 multipart 请求转发给远端服务的参数；设备、缓存和 compute type 由远端服务控制。</div></div>
@@ -548,9 +590,6 @@ export function AdminPage() {
                           <div className="field"><label className="label" htmlFor="cfg-no-align">No align</label><select id="cfg-no-align" className="select" value={String(whisperxArgBooleanValue('no_align', defaultWhisperxArgDisplay.noAlign))} onChange={(event) => setWhisperxBooleanArg('no_align', event.target.value === 'true')}><option value="false">false</option><option value="true">true</option></select></div>
                           <div className="field"><label className="label" htmlFor="cfg-align-model">Align model</label><input id="cfg-align-model" className="input" value={whisperxArgValue('align_model', defaultWhisperxArgDisplay.alignModel)} placeholder="远端自动" onChange={(event) => setWhisperxArg('align_model', event.target.value)} /></div>
                           <div className="field field-full"><label className="label" htmlFor="cfg-diarize-model">Diarize model</label><input id="cfg-diarize-model" className="input mono" value={whisperxArgValue('diarize_model', defaultWhisperxArgDisplay.diarizeModel)} placeholder="远端默认不指定；例如 /models/pyannote-speaker-diarization-community-1" onChange={(event) => setWhisperxArg('diarize_model', event.target.value)} /></div>
-                          <div className="field"><label className="label" htmlFor="cfg-min-speakers">Min speakers</label><input id="cfg-min-speakers" className="input mono" type="number" min="1" value={whisperxArgValue('min_speakers', defaultWhisperxArgDisplay.minSpeakers)} placeholder="远端默认：自动" onChange={(event) => setWhisperxArg('min_speakers', event.target.value)} /></div>
-                          <div className="field"><label className="label" htmlFor="cfg-max-speakers">Max speakers</label><input id="cfg-max-speakers" className="input mono" type="number" min="1" value={whisperxArgValue('max_speakers', defaultWhisperxArgDisplay.maxSpeakers)} placeholder="远端默认：自动" onChange={(event) => setWhisperxArg('max_speakers', event.target.value)} /></div>
-                          <div className="field"><label className="label" htmlFor="cfg-speaker-embeddings">Speaker embeddings</label><select id="cfg-speaker-embeddings" className="select" value={String(whisperxArgBooleanValue('speaker_embeddings', defaultWhisperxArgDisplay.speakerEmbeddings))} onChange={(event) => setWhisperxBooleanArg('speaker_embeddings', event.target.value === 'true')}><option value="false">false</option><option value="true">true</option></select></div>
                         </>
                       ) : (
                         <>

@@ -1,17 +1,20 @@
 {
   "data_root": ".data/media-to-md",
-  "api_base_url": "http://localhost:8000/api",
   "whisperx_backend": "cli",
   "whisperx_openai_base_url": "http://localhost:9000/v1",
   "whisperx_openai_api_key": null,
   "whisperx_openai_timeout_seconds": 3600,
-  "whisperx_model": "small",
+  "whisperx_cli_model": "small",
+  "whisperx_openai_model": "large-v2",
   "whisperx_model_dir": ".data/models",
   "nltk_data_dir": ".data/models/nltk_data",
   "model_cache_only": false,
-  "whisperx_args": {
+  "whisperx_cli_args": {
     "batch_size": 8,
     "compute_type": "default"
+  },
+  "whisperx_openai_args": {
+    "batch_size": 8
   },
   "opendataloader_pdf_args": {
     "format": [

@@ -54,12 +54,12 @@ whisperx <input-media> \
   --output_dir <job-output> \
   --output_format <format> \
   --model_dir <cache-dir> \
-  <whisperx_args>
+  <whisperx_cli_args>
 ```
 
 公开上传页只允许用户选择语言和少量任务参数；模型、缓存和批处理等运行参数由后端配置或管理页维护。
 
-允许的 `whisperx_args`：
+允许的 `whisperx_cli_args`：
 
 `batch_size`, `device`, `device_index`, `compute_type`, `threads`, `chunk_size`, `vad_method`, `vad_onset`, `vad_offset`, `align_model`, `diarize_model`, `min_speakers`, `max_speakers`, `speaker_embeddings`, `no_align`
 
@@ -77,7 +77,7 @@ timestamp_granularities[]=segment
 
 返回的 `verbose_json` 会被写成 `result.json`，并派生出 `result.txt`、`result.srt`、`result.vtt`。
 
-OpenAI 模式只转发适合每次请求覆盖的 `whisperx_args`：`batch_size`, `chunk_size`, `no_align`, `align_model`, `diarize_model`, `min_speakers`, `max_speakers`, `speaker_embeddings`。设备、模型目录、compute type 等由远端 WhisperX 服务启动参数控制。
+OpenAI 模式只转发适合每次请求覆盖的 `whisperx_openai_args`：`batch_size`, `chunk_size`, `no_align`, `align_model`, `diarize_model`, `min_speakers`, `max_speakers`, `speaker_embeddings`。设备、模型目录、compute type 等由远端 WhisperX 服务启动参数控制。
 
 ## OpenDataLoader PDF
 

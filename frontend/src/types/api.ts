@@ -1,5 +1,12 @@
 export const FALLBACK_API_BASE_URL = 'http://localhost:8000/api';
-export const ENV_API_BASE_URL = import.meta.env.MEDIA_TO_MD_API_BASE_URL?.trim() || null;
+
+function normalizeApiBaseUrl(value: string | null | undefined): string | null {
+  const trimmed = value?.trim() ?? '';
+  if (!trimmed) return null;
+  return trimmed.replace(/\/+$/, '');
+}
+
+export const ENV_API_BASE_URL = normalizeApiBaseUrl(import.meta.env.MEDIA_TO_MD_API_BASE_URL);
 export const DEFAULT_API_BASE_URL = ENV_API_BASE_URL ?? FALLBACK_API_BASE_URL;
 export const API_BASE_URL = DEFAULT_API_BASE_URL;
 
@@ -61,8 +68,9 @@ export interface PdfJobOptions {
 export type JobOptions = WhisperxJobOptions | PdfJobOptions;
 
 export interface BackendConfig {
-  apiBaseUrl: string | null;
   model: string;
+  cliModel: string;
+  openaiModel: string;
   modelDir: string | null;
   whisperxBackend: WhisperxBackend;
   whisperxOpenaiBaseUrl: string | null;
@@ -71,6 +79,9 @@ export interface BackendConfig {
   modelCacheOnly: boolean;
   whisperxArgs: string[];
   whisperxArgsConfig: Record<string, unknown>;
+  whisperxCliArgs: string[];
+  whisperxCliArgsConfig: Record<string, unknown>;
+  whisperxOpenaiArgsConfig: Record<string, unknown>;
   pdfArgs: string[];
   pdfArgsConfig: Record<string, unknown>;
   nltkDataDir: string | null;

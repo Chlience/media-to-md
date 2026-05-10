@@ -91,28 +91,60 @@ describe('hash routing shell', () => {
     expect(container.querySelector('.page-head')?.textContent).not.toContain('保存 config');
     const configBox = screen.getByRole('heading', { name: '后端运行配置' }).closest('section');
     expect(screen.queryByRole('heading', { name: '后端 API 配置' })).not.toBeInTheDocument();
-    expect(configBox).toContainElement(screen.getByLabelText('API Base URL'));
-    expect(within(configBox as HTMLElement).getByLabelText('API Base URL')).toHaveValue('http://localhost:8000/api');
-    expect(within(configBox as HTMLElement).getByLabelText('默认模型')).toHaveValue('small');
+    expect(within(configBox as HTMLElement).queryByLabelText('API Base URL')).not.toBeInTheDocument();
+    expect(within(configBox as HTMLElement).getByText(/前端 API 地址为启动配置/)).toBeInTheDocument();
+    expect(within(configBox as HTMLElement).getByText('http://localhost:8000/api')).toBeInTheDocument();
+    const defaultModelInput = within(configBox as HTMLElement).getByLabelText('默认模型');
+    expect(defaultModelInput).toHaveValue('small');
+    fireEvent.change(defaultModelInput, { target: { value: 'medium' } });
+    expect(defaultModelInput).toHaveValue('medium');
     expect(within(configBox as HTMLElement).getByLabelText('Device')).toHaveValue('');
     expect(within(configBox as HTMLElement).getByLabelText('Compute type')).toHaveValue('default');
     expect(within(configBox as HTMLElement).getByLabelText('Batch size')).toHaveValue('8');
+    fireEvent.change(within(configBox as HTMLElement).getByLabelText('Batch size'), {
+      target: { value: '6' },
+    });
+    expect(within(configBox as HTMLElement).getByLabelText('Batch size')).toHaveValue('6');
     expect(within(configBox as HTMLElement).getByLabelText('No align')).toHaveValue('false');
+    expect(within(configBox as HTMLElement).getByLabelText('Min speakers')).toBeInTheDocument();
+    expect(within(configBox as HTMLElement).getByLabelText('Max speakers')).toBeInTheDocument();
+    expect(within(configBox as HTMLElement).getByLabelText('Speaker embeddings')).toBeInTheDocument();
     expect(within(configBox as HTMLElement).getByLabelText('仅使用本地缓存')).toHaveValue('false');
     expect(within(configBox as HTMLElement).queryByLabelText('OpenAI Base URL')).not.toBeInTheDocument();
     expect(within(configBox as HTMLElement).getByText(/本机 CLI 模式显示/)).toBeInTheDocument();
     fireEvent.change(within(configBox as HTMLElement).getByLabelText('执行方式'), {
       target: { value: 'openai' },
     });
+    expect(within(configBox as HTMLElement).getByLabelText('默认模型')).toHaveValue('large-v2');
+    fireEvent.change(within(configBox as HTMLElement).getByLabelText('默认模型'), {
+      target: { value: 'large-v3' },
+    });
     expect(within(configBox as HTMLElement).getByLabelText('OpenAI Base URL')).toBeInTheDocument();
     expect(within(configBox as HTMLElement).getByLabelText('OpenAI API Key')).toBeInTheDocument();
     expect(within(configBox as HTMLElement).getByLabelText('OpenAI timeout seconds')).toHaveValue('3600');
     expect(within(configBox as HTMLElement).getByLabelText('Batch size')).toHaveValue('8');
+    fireEvent.change(within(configBox as HTMLElement).getByLabelText('Batch size'), {
+      target: { value: '12' },
+    });
+    expect(within(configBox as HTMLElement).getByLabelText('Batch size')).toHaveValue('12');
     expect(within(configBox as HTMLElement).getByLabelText('No align')).toHaveValue('false');
     expect(within(configBox as HTMLElement).queryByLabelText('Device')).not.toBeInTheDocument();
     expect(within(configBox as HTMLElement).queryByLabelText('Compute type')).not.toBeInTheDocument();
     expect(within(configBox as HTMLElement).queryByLabelText('仅使用本地缓存')).not.toBeInTheDocument();
+    expect(within(configBox as HTMLElement).queryByLabelText('Min speakers')).not.toBeInTheDocument();
+    expect(within(configBox as HTMLElement).queryByLabelText('Max speakers')).not.toBeInTheDocument();
+    expect(within(configBox as HTMLElement).queryByLabelText('Speaker embeddings')).not.toBeInTheDocument();
     expect(within(configBox as HTMLElement).getByText(/OpenAI 模式只显示接口配置/)).toBeInTheDocument();
+    fireEvent.change(within(configBox as HTMLElement).getByLabelText('执行方式'), {
+      target: { value: 'cli' },
+    });
+    expect(within(configBox as HTMLElement).getByLabelText('默认模型')).toHaveValue('medium');
+    expect(within(configBox as HTMLElement).getByLabelText('Batch size')).toHaveValue('6');
+    fireEvent.change(within(configBox as HTMLElement).getByLabelText('执行方式'), {
+      target: { value: 'openai' },
+    });
+    expect(within(configBox as HTMLElement).getByLabelText('默认模型')).toHaveValue('large-v3');
+    expect(within(configBox as HTMLElement).getByLabelText('Batch size')).toHaveValue('12');
     expect(configBox).toContainElement(screen.getByRole('button', { name: '保存 config' }));
     expect(configBox?.textContent).not.toContain('读取 /admin/config · 保存 /admin/config · 展示当前生效参数');
     expect(screen.queryByLabelText('WhisperX args JSON')).not.toBeInTheDocument();
@@ -123,6 +155,124 @@ describe('hash routing shell', () => {
     expect(screen.getByRole('columnheader', { name: '清洗力度' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '上一页' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '下一页' })).toBeInTheDocument();
+  });
+
+  it('shows a right-side notice after saving backend config', async () => {
+    window.localStorage.setItem('whisperx_admin_token', 'token');
+    window.localStorage.setItem('whisperx_admin_username', 'admin');
+    const configResponse = {
+      whisperx_model: 'small',
+      whisperx_cli_model: 'small',
+      whisperx_openai_model: 'large-v2',
+      whisperx_model_dir: null,
+      whisperx_backend: 'cli',
+      whisperx_openai_base_url: null,
+      whisperx_openai_api_key_configured: false,
+      whisperx_openai_timeout_seconds: 3600,
+      model_cache_only: false,
+      nltk_data_dir: null,
+      whisperx_args: [],
+      whisperx_args_config: {},
+      whisperx_cli_args: [],
+      whisperx_cli_args_config: {},
+      whisperx_openai_args_config: {},
+      opendataloader_pdf_args: [],
+      opendataloader_pdf_args_config: {},
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith('/jobs')) {
+          return new Response(JSON.stringify({ jobs: [] }), {
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (url.endsWith('/admin/config')) {
+          if (init?.method === 'PUT') {
+            expect(JSON.parse(String(init.body))).toMatchObject({
+              whisperx_cli_model: 'small',
+              whisperx_openai_model: 'large-v2',
+              whisperx_backend: 'cli',
+            });
+          }
+          return new Response(JSON.stringify(configResponse), {
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        return new Response('{}', { headers: { 'Content-Type': 'application/json' } });
+      }),
+    );
+
+    window.location.hash = '#/admin';
+    render(<App />);
+
+    const configBox = screen.getByRole('heading', { name: '后端运行配置' }).closest('section');
+    expect(await within(configBox as HTMLElement).findByLabelText('默认模型')).toHaveValue('small');
+    fireEvent.click(within(configBox as HTMLElement).getByRole('button', { name: '保存 config' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent('配置已保存');
+    expect(screen.getByText('配置已保存')).toHaveClass('config-toast-success');
+  });
+
+  it('shows a right-side save failure notice without trailing punctuation', async () => {
+    window.localStorage.setItem('whisperx_admin_token', 'token');
+    window.localStorage.setItem('whisperx_admin_username', 'admin');
+    const configResponse = {
+      whisperx_model: 'small',
+      whisperx_cli_model: 'small',
+      whisperx_openai_model: 'large-v2',
+      whisperx_model_dir: null,
+      whisperx_backend: 'cli',
+      whisperx_openai_base_url: null,
+      whisperx_openai_api_key_configured: false,
+      whisperx_openai_timeout_seconds: 3600,
+      model_cache_only: false,
+      nltk_data_dir: null,
+      whisperx_args: [],
+      whisperx_args_config: {},
+      whisperx_cli_args: [],
+      whisperx_cli_args_config: {},
+      whisperx_openai_args_config: {},
+      opendataloader_pdf_args: [],
+      opendataloader_pdf_args_config: {},
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith('/jobs')) {
+          return new Response(JSON.stringify({ jobs: [] }), {
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (url.endsWith('/admin/config') && init?.method === 'PUT') {
+          return new Response(JSON.stringify({ detail: 'OpenAI timeout seconds 必须是大于 0 的数字。' }), {
+            status: 400,
+            statusText: 'Bad Request',
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (url.endsWith('/admin/config')) {
+          return new Response(JSON.stringify(configResponse), {
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        return new Response('{}', { headers: { 'Content-Type': 'application/json' } });
+      }),
+    );
+
+    window.location.hash = '#/admin';
+    render(<App />);
+
+    const configBox = screen.getByRole('heading', { name: '后端运行配置' }).closest('section');
+    expect(await within(configBox as HTMLElement).findByLabelText('默认模型')).toHaveValue('small');
+    fireEvent.click(within(configBox as HTMLElement).getByRole('button', { name: '保存 config' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      '保存失败 OpenAI timeout seconds 必须是大于 0 的数字',
+    );
+    expect(screen.queryByText(/Config 保存失败/)).not.toBeInTheDocument();
   });
 
   it('shows password management instead of login/logout inside signed-in account modal', async () => {
@@ -140,7 +290,6 @@ describe('hash routing shell', () => {
         if (url.endsWith('/admin/config')) {
           return new Response(
             JSON.stringify({
-              api_base_url: 'http://localhost:8000/api',
               whisperx_model: 'small',
               whisperx_model_dir: null,
               model_cache_only: false,
@@ -208,7 +357,6 @@ describe('hash routing shell', () => {
         if (url.endsWith('/admin/config')) {
           return new Response(
             JSON.stringify({
-              api_base_url: 'http://localhost:8000/api',
               whisperx_model: 'small',
               whisperx_model_dir: null,
               whisperx_backend: 'cli',

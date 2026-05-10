@@ -51,6 +51,8 @@ def make_client(tmp_path: Path):
     settings = Settings(
         data_root=tmp_path,
         whisperx_model="/models/faster-whisper-large-v2",
+        whisperx_cli_model="/models/faster-whisper-large-v2",
+        whisperx_openai_model="large-v2",
         whisperx_model_dir="/models",
         model_cache_only=True,
         nltk_data_dir="/models/nltk_data",
@@ -92,8 +94,9 @@ def test_upload_status_config_reconstruct_from_filesystem(tmp_path):
     assert client.get("/api/config").status_code == 401
     assert client.get("/api/admin/config").status_code == 401
     assert client.get("/api/admin/config", headers=headers).json() == {
-        "api_base_url": None,
         "whisperx_model": "/models/faster-whisper-large-v2",
+        "whisperx_cli_model": "/models/faster-whisper-large-v2",
+        "whisperx_openai_model": "large-v2",
         "whisperx_model_dir": "/models",
         "whisperx_backend": "cli",
         "whisperx_openai_base_url": None,
@@ -103,6 +106,9 @@ def test_upload_status_config_reconstruct_from_filesystem(tmp_path):
         "nltk_data_dir": "/models/nltk_data",
         "whisperx_args": [],
         "whisperx_args_config": {},
+        "whisperx_cli_args": [],
+        "whisperx_cli_args_config": {},
+        "whisperx_openai_args_config": {},
         "opendataloader_pdf_args": [],
         "opendataloader_pdf_args_config": {"format": "markdown,text", "image_output": "off"},
     }
@@ -357,6 +363,7 @@ def test_admin_can_update_backend_config(monkeypatch, tmp_path):
         """
 {
   "data_root": "data",
+  "api_base_url": "http://legacy.example/api",
   "whisperx_model": "small",
   "whisperx_model_dir": "models",
   "nltk_data_dir": "models/nltk_data",
@@ -391,8 +398,8 @@ def test_admin_can_update_backend_config(monkeypatch, tmp_path):
         "/api/admin/config",
         headers=headers,
         json={
-            "whisperx_model": "/models/faster-whisper-large-v2",
-            "api_base_url": "http://localhost:8000/api",
+            "whisperx_cli_model": "small",
+            "whisperx_openai_model": "/models/faster-whisper-large-v2",
             "whisperx_model_dir": "/models",
             "whisperx_backend": "openai",
             "whisperx_openai_base_url": "http://localhost:9000/v1",
@@ -400,10 +407,14 @@ def test_admin_can_update_backend_config(monkeypatch, tmp_path):
             "whisperx_openai_timeout_seconds": 180,
             "nltk_data_dir": "/models/nltk",
             "model_cache_only": True,
-            "whisperx_args": {
-                "batch_size": 12,
+            "whisperx_cli_args": {
+                "batch_size": 6,
                 "compute_type": "int8",
-                "diarize_model": "/models/pyannote",
+                "diarize_model": "/models/local-pyannote",
+            },
+            "whisperx_openai_args": {
+                "batch_size": 12,
+                "diarize_model": "/models/remote-pyannote",
                 "min_speakers": 1,
                 "max_speakers": 4,
                 "speaker_embeddings": True,
@@ -413,8 +424,9 @@ def test_admin_can_update_backend_config(monkeypatch, tmp_path):
 
     assert response.status_code == 200, response.text
     assert response.json() == {
-        "api_base_url": "http://localhost:8000/api",
         "whisperx_model": "/models/faster-whisper-large-v2",
+        "whisperx_cli_model": "small",
+        "whisperx_openai_model": "/models/faster-whisper-large-v2",
         "whisperx_model_dir": "/models",
         "whisperx_backend": "openai",
         "whisperx_openai_base_url": "http://localhost:9000/v1",
@@ -425,10 +437,8 @@ def test_admin_can_update_backend_config(monkeypatch, tmp_path):
         "whisperx_args": [
             "--batch_size",
             "12",
-            "--compute_type",
-            "int8",
             "--diarize_model",
-            "/models/pyannote",
+            "/models/remote-pyannote",
             "--min_speakers",
             "1",
             "--max_speakers",
@@ -437,8 +447,27 @@ def test_admin_can_update_backend_config(monkeypatch, tmp_path):
         ],
         "whisperx_args_config": {
             "batch_size": 12,
+            "diarize_model": "/models/remote-pyannote",
+            "min_speakers": 1,
+            "max_speakers": 4,
+            "speaker_embeddings": True,
+        },
+        "whisperx_cli_args": [
+            "--batch_size",
+            "6",
+            "--compute_type",
+            "int8",
+            "--diarize_model",
+            "/models/local-pyannote",
+        ],
+        "whisperx_cli_args_config": {
+            "batch_size": 6,
             "compute_type": "int8",
-            "diarize_model": "/models/pyannote",
+            "diarize_model": "/models/local-pyannote",
+        },
+        "whisperx_openai_args_config": {
+            "batch_size": 12,
+            "diarize_model": "/models/remote-pyannote",
             "min_speakers": 1,
             "max_speakers": 4,
             "speaker_embeddings": True,
@@ -457,9 +486,15 @@ def test_admin_can_update_backend_config(monkeypatch, tmp_path):
     saved = config_path.read_text(encoding="utf-8")
     assert '"data_root": "data"' in saved
     assert '"admin_password": "secret-pass"' in saved
-    assert '"api_base_url": "http://localhost:8000/api"' in saved
+    assert "api_base_url" not in saved
+    assert '"whisperx_model"' not in saved
+    assert '"whisperx_args"' not in saved
+    assert '"whisperx_cli_model": "small"' in saved
+    assert '"whisperx_openai_model": "/models/faster-whisper-large-v2"' in saved
     assert '"batch_size": 12' in saved
-    assert '"diarize_model": "/models/pyannote"' in saved
+    assert '"batch_size": 6' in saved
+    assert '"diarize_model": "/models/remote-pyannote"' in saved
+    assert '"diarize_model": "/models/local-pyannote"' in saved
     assert '"whisperx_backend": "openai"' in saved
     assert '"whisperx_openai_api_key": "test-key"' in saved
     assert data_root.exists()
@@ -481,6 +516,8 @@ def test_admin_can_update_backend_config(monkeypatch, tmp_path):
     assert isinstance(whisperx_runner, JobStorageOpenAIWhisperXRunner)
     assert whisperx_runner.config.default_model == "/models/faster-whisper-large-v2"
     assert whisperx_runner.config.base_url == "http://localhost:9000/v1"
+    assert whisperx_runner.config.config_fields["batch_size"] == 12
+    assert "compute_type" not in whisperx_runner.config.config_fields
 
 
 def test_admin_config_update_requires_login(tmp_path):

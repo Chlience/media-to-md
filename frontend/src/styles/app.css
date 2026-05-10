@@ -733,6 +733,29 @@ button.active.filter { background: var(--fg); border-color: var(--fg); color: #f
   color: var(--muted);
   padding: 12px;
 }
+.config-toast {
+  position: fixed;
+  top: 112px;
+  right: 24px;
+  z-index: 80;
+  max-width: min(360px, calc(100vw - 48px));
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--canvas);
+  box-shadow: 0 12px 28px rgba(31, 35, 40, .16);
+  font-weight: 600;
+  padding: 12px 14px;
+}
+.config-toast-success {
+  border-color: #2da44e66;
+  background: var(--green-subtle);
+  color: var(--green);
+}
+.config-toast-error {
+  border-color: #ff818266;
+  background: var(--red-subtle);
+  color: #82071e;
+}
 .submit-row { justify-content: flex-end; }
 .field-full { grid-column: 1 / -1; }
 .selected-file { margin-top: 10px; font-weight: 600; overflow-wrap: anywhere; }

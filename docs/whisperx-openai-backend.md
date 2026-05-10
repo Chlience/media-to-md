@@ -11,6 +11,14 @@ PDF 任务不受影响，仍走 `opendataloader-pdf`。
 
 如果你已经单独启动了 `whisperx-openai-server`，或者想把 GPU/模型加载放在另一个服务进程/机器里，就把 Media-to-MD 切到 `openai` 模式。
 
+## 本地部署服务
+
+如果需要在本机或局域网机器上部署 OpenAI 兼容 WhisperX 服务，可以使用：
+
+<https://github.com/Chlience/whisperx-openai-server>
+
+按该项目说明启动服务后，把 Media-to-MD 的 `whisperx_openai_base_url` 指向服务地址即可。例如服务监听 `9000` 端口时，可以配置为 `http://localhost:9000/v1`。
+
 ## 配置方式
 
 编辑 `backend/config.json`：
@@ -21,8 +29,9 @@ PDF 任务不受影响，仍走 `opendataloader-pdf`。
   "whisperx_openai_base_url": "http://localhost:9000/v1",
   "whisperx_openai_api_key": null,
   "whisperx_openai_timeout_seconds": 3600,
-  "whisperx_model": "large-v2",
-  "whisperx_args": {
+  "whisperx_cli_model": "small",
+  "whisperx_openai_model": "large-v2",
+  "whisperx_openai_args": {
     "batch_size": 8,
     "chunk_size": 30,
     "diarize_model": "/home/chlience/model/pyannote-speaker-diarization-community-1"
@@ -37,6 +46,7 @@ export WHISPERX_BACKEND=openai
 export WHISPERX_OPENAI_BASE_URL=http://localhost:9000/v1
 export WHISPERX_OPENAI_API_KEY=your-server-api-key
 export WHISPERX_OPENAI_TIMEOUT_SECONDS=3600
+export WHISPERX_OPENAI_ARGS_JSON='{"batch_size":8}'
 ```
 
 如果 `whisperx-openai-server` 启用了 `WHISPERX_SERVER_API_KEY`，这里的 `WHISPERX_OPENAI_API_KEY` 要填同一个值；否则可以留空。
@@ -58,9 +68,9 @@ Media-to-MD 会向 OpenAI 兼容接口发送 multipart 表单：
 - 固定发送：`file`, `model`, `response_format=verbose_json`, `timestamp_granularities[]=segment`
 - 语言：前台选择 `auto` 时不发送 `language`；手动选择时发送语言代码。
 - 说话人分离：开启时发送 `diarize=true`，以及可选的 `min_speakers` / `max_speakers`。
-- `whisperx_args` 中会转发给远端的字段：`batch_size`, `chunk_size`, `no_align`, `align_model`, `diarize_model`, `min_speakers`, `max_speakers`, `speaker_embeddings`。
+- `whisperx_openai_args` 中会转发给远端的字段：`batch_size`, `chunk_size`, `no_align`, `align_model`, `diarize_model`, `min_speakers`, `max_speakers`, `speaker_embeddings`。
 
-`device`, `compute_type`, `model_dir`, `nltk_data_dir` 这类运行环境参数仍保留在配置里，但在 `openai` 模式下主要由远端 `whisperx-openai-server` 自己控制。
+`device`, `compute_type`, `model_dir`, `nltk_data_dir` 这类运行环境参数仍保留在 CLI 配置里，但在 `openai` 模式下主要由远端 `whisperx-openai-server` 自己控制。旧版 `whisperx_args` 仍会作为兼容回退读取；保存配置时会拆为 `whisperx_cli_args` 与 `whisperx_openai_args`。
 
 ## 输出文件
 

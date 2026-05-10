@@ -24,6 +24,8 @@ from ..config import (
     normalize_opendataloader_pdf_args,
     normalize_opendataloader_pdf_args_config,
     normalize_whisperx_args,
+    normalize_whisperx_args_config,
+    normalize_whisperx_openai_args_config,
     write_backend_config_update,
 )
 from ..jobs import JobRunnerDispatcher, JobService, build_job_runner
@@ -228,8 +230,9 @@ def _config_response(settings: Settings) -> ConfigResponse:
     if not opendataloader_pdf_config:
         opendataloader_pdf_config = normalize_opendataloader_pdf_args_config({})
     return ConfigResponse(
-        api_base_url=settings.api_base_url,
         whisperx_model=settings.whisperx_model,
+        whisperx_cli_model=settings.whisperx_cli_model,
+        whisperx_openai_model=settings.whisperx_openai_model,
         whisperx_model_dir=settings.whisperx_model_dir,
         whisperx_backend=settings.whisperx_backend,
         whisperx_openai_base_url=settings.whisperx_openai_base_url,
@@ -239,6 +242,9 @@ def _config_response(settings: Settings) -> ConfigResponse:
         nltk_data_dir=settings.nltk_data_dir,
         whisperx_args=list(settings.whisperx_args),
         whisperx_args_config=dict(settings.whisperx_args_config),
+        whisperx_cli_args=list(settings.whisperx_cli_args),
+        whisperx_cli_args_config=dict(settings.whisperx_cli_args_config),
+        whisperx_openai_args_config=dict(settings.whisperx_openai_args_config),
         opendataloader_pdf_args=opendataloader_pdf_argv,
         opendataloader_pdf_args_config=opendataloader_pdf_config,
     )
@@ -248,24 +254,63 @@ def _config_response(settings: Settings) -> ConfigResponse:
 def update_config(
     update: ConfigUpdateRequest,
     request: Request,
+    settings: Annotated[Settings, Depends(get_settings_dep)],
     _: Annotated[str, Depends(require_admin)],
 ) -> ConfigResponse:
     try:
-        normalize_whisperx_args(update.whisperx_args)
         normalize_opendataloader_pdf_args(update.opendataloader_pdf_args)
         normalized_pdf_args_config = normalize_opendataloader_pdf_args_config(
             update.opendataloader_pdf_args
         )
+        legacy_args_provided = "whisperx_args" in update.model_fields_set
+        cli_args = update.whisperx_cli_args
+        if cli_args is None:
+            cli_args = (
+                update.whisperx_args
+                if legacy_args_provided
+                else settings.whisperx_cli_args_config
+            )
+        openai_args = update.whisperx_openai_args
+        openai_args_from_legacy = False
+        if openai_args is None:
+            openai_args_from_legacy = legacy_args_provided
+            openai_args = (
+                update.whisperx_args
+                if openai_args_from_legacy
+                else settings.whisperx_openai_args_config
+            )
+        normalized_cli_args_config = normalize_whisperx_args_config(
+            cli_args, context="whisperx_cli_args"
+        )
+        normalized_openai_args_config = normalize_whisperx_openai_args_config(
+            openai_args, from_legacy=openai_args_from_legacy
+        )
+        normalize_whisperx_args(normalized_cli_args_config)
+        normalize_whisperx_args(normalized_openai_args_config)
+        legacy_model = update.whisperx_model
+        cli_model = update.whisperx_cli_model or (
+            legacy_model
+            if update.whisperx_backend == "cli"
+            else settings.whisperx_cli_model
+        )
+        openai_model = update.whisperx_openai_model or (
+            legacy_model
+            if update.whisperx_backend == "openai"
+            else settings.whisperx_openai_model
+        )
+        if not cli_model or not openai_model:
+            raise ValueError("Both CLI and OpenAI WhisperX models must be configured.")
         config_updates = {
-            "whisperx_model": update.whisperx_model,
-            "api_base_url": update.api_base_url,
+            "whisperx_cli_model": cli_model,
+            "whisperx_openai_model": openai_model,
             "whisperx_model_dir": update.whisperx_model_dir,
             "whisperx_backend": update.whisperx_backend,
             "whisperx_openai_base_url": update.whisperx_openai_base_url,
             "whisperx_openai_timeout_seconds": update.whisperx_openai_timeout_seconds,
             "model_cache_only": update.model_cache_only,
             "nltk_data_dir": update.nltk_data_dir,
-            "whisperx_args": update.whisperx_args,
+            "whisperx_cli_args": normalized_cli_args_config,
+            "whisperx_openai_args": normalized_openai_args_config,
             "opendataloader_pdf_args": normalized_pdf_args_config,
         }
         if update.whisperx_openai_clear_api_key:

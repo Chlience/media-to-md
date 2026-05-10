@@ -444,16 +444,25 @@ class JobStorageOpenAIWhisperXRunner(OpenAIWhisperXRunner):
 
     @classmethod
     def from_settings(cls, storage, settings) -> "JobStorageOpenAIWhisperXRunner":
+        config_fields = dict(getattr(settings, "whisperx_openai_args_config", {}))
+        if not config_fields:
+            config_fields = dict(getattr(settings, "whisperx_args_config", {}))
+        default_model = (
+            getattr(settings, "whisperx_model", "small")
+            if getattr(settings, "whisperx_backend", "cli") == "openai"
+            else getattr(settings, "whisperx_openai_model", None)
+            or getattr(settings, "whisperx_model", "small")
+        )
         return cls(
             storage,
             OpenAIWhisperXRunnerConfig(
                 base_url=getattr(settings, "whisperx_openai_base_url", None),
                 api_key=getattr(settings, "whisperx_openai_api_key", None),
-                default_model=getattr(settings, "whisperx_model", "small"),
+                default_model=default_model,
                 timeout_seconds=float(
                     getattr(settings, "whisperx_openai_timeout_seconds", 3600.0)
                 ),
-                config_fields=dict(getattr(settings, "whisperx_args_config", {})),
+                config_fields=config_fields,
             ),
         )
 

@@ -21,7 +21,7 @@
 
 ## 安装外部 CLI
 
-默认后端任务直接调用本机 `whisperx` 和 `opendataloader-pdf`，不会在任务运行时临时安装外部包。若音视频转写使用 `whisperx_backend=openai`，则只调用已启动的 WhisperX OpenAI 兼容服务。CLI 模式建议用独立的 `uv tool` 安装外部命令：
+默认后端任务直接调用本机 `whisperx` 和 `opendataloader-pdf`，不会在任务运行时临时安装外部包。若音视频转写使用 `whisperx_backend=openai`，则只调用已启动的 WhisperX OpenAI 兼容服务；本地服务可以使用 <https://github.com/Chlience/whisperx-openai-server> 部署。CLI 模式建议用独立的 `uv tool` 安装外部命令：
 
 ```bash
 uv tool install --python 3.12 whisperx
@@ -83,10 +83,11 @@ ffmpeg -version
 | 环境变量 | 作用 |
 | --- | --- |
 | `WHISPERX_CONFIG_FILE` | 指定配置文件路径；设为空字符串可禁用配置文件读取。 |
-| `MEDIA_TO_MD_API_BASE_URL` | 覆盖返回给前端的 API 地址。 |
-| `WHISPERX_MODEL` / `WHISPERX_MODEL_DIR` | 覆盖默认模型与模型缓存目录。 |
+| `WHISPERX_CLI_MODEL` / `WHISPERX_OPENAI_MODEL` | 分别覆盖本机 CLI 与 OpenAI 兼容接口模式默认模型；`WHISPERX_MODEL` 仅作为旧版全局回退。 |
+| `WHISPERX_MODEL_DIR` | 覆盖模型缓存目录。 |
 | `WHISPERX_MODEL_CACHE_ONLY` | 覆盖是否只使用本地模型缓存。 |
-| `WHISPERX_ARGS_JSON` | 覆盖 `whisperx_args`。 |
+| `WHISPERX_CLI_ARGS_JSON` / `WHISPERX_OPENAI_ARGS_JSON` | 分别覆盖本机 CLI 与 OpenAI 兼容接口模式参数。 |
+| `WHISPERX_ARGS_JSON` | 旧版全局参数覆盖；未设置专用变量时作为兼容回退。 |
 | `WHISPERX_BACKEND` | 音视频转写执行方式：`cli` 或 `openai`。 |
 | `WHISPERX_OPENAI_BASE_URL` | OpenAI 兼容 WhisperX 服务地址，如 `http://localhost:9000/v1`。 |
 | `WHISPERX_OPENAI_API_KEY` | 调用 OpenAI 兼容服务时发送的 Bearer Key。 |
@@ -94,21 +95,29 @@ ffmpeg -version
 | `OPENDATALOADER_PDF_ARGS_JSON` | 覆盖 `opendataloader_pdf_args`。 |
 | `WHISPERX_ADMIN_USERNAME` / `WHISPERX_ADMIN_PASSWORD` | 覆盖管理员账号。 |
 
-`MEDIA_TO_MD_API_BASE_URL` 同时会作为前端启动/构建时变量使用；修改后需要重启前端 dev server，生产包需要重新构建。若浏览器保存过旧地址，可在管理页先应用 API 地址到本浏览器，或清理 localStorage 的 `media_to_md_api_base_url`。
+`MEDIA_TO_MD_API_BASE_URL` 是前端启动/构建时变量，不属于后端运行配置；修改后需要重启前端 dev server，生产包需要重新构建。管理页只读展示当前启动配置，不再写入浏览器本地覆盖。
 
 ### 允许的 WhisperX 参数
 
+CLI 模式 `whisperx_cli_args` 允许：
+
 `batch_size`, `device`, `device_index`, `compute_type`, `threads`, `chunk_size`, `vad_method`, `vad_onset`, `vad_offset`, `align_model`, `diarize_model`, `min_speakers`, `max_speakers`, `speaker_embeddings`, `no_align`
 
-这些参数会转换为对应的 WhisperX CLI flag，例如：
+OpenAI 模式 `whisperx_openai_args` 允许：
+
+`batch_size`, `chunk_size`, `no_align`, `align_model`, `diarize_model`, `min_speakers`, `max_speakers`, `speaker_embeddings`
+
+CLI 参数会转换为对应的 WhisperX CLI flag，例如：
 
 ```json
-"whisperx_args": {
+"whisperx_cli_args": {
   "batch_size": 8,
   "compute_type": "float16",
   "device": "cuda"
 }
 ```
+
+旧版 `whisperx_args` 仍会作为兼容回退读取；管理页保存后会写成 `whisperx_cli_args` 和 `whisperx_openai_args`。
 
 
 ### WhisperX OpenAI 兼容模式

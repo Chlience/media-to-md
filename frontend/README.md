@@ -40,9 +40,7 @@ http://localhost:8000/api
 
 - 修改环境变量后需要重启 Vite dev server；生产包需要重新 `npm run build`。
 - 如果写 `.env` 文件，应放在 `frontend/.env`，或在启动命令前显式导出变量。
-- 浏览器本地也会保存 API 地址；管理页“后端运行配置”中可先点击“应用 API 地址到本浏览器”，再登录或保存后端 config。
-
-管理员也可以在 `/#/admin` 的“后端运行配置”中保存 API Base URL；保存 config 时后端会写入 `backend/config.json`。
+- 管理页只读展示当前启动配置；浏览器本地不再保存或覆盖 API 地址。
 
 ## 页面行为
 
@@ -66,7 +64,7 @@ http://localhost:8000/api
 src/api/              后端 API client
 src/components/       通用 UI 组件
 src/pages/            WorkbenchPage 与 AdminPage
-src/services/         API 地址、session、下载辅助
+src/services/         session、下载辅助
 src/types/            API 类型与解析器
 src/styles/           页面样式
 ```

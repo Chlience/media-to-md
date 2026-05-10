@@ -2,6 +2,7 @@ import {
   AdminAccountInfo,
   AdminSession,
   Artifact,
+  API_BASE_URL,
   BackendConfig,
   JobCreateResponse,
   JobEvent,
@@ -10,7 +11,6 @@ import {
   JsonObject,
   jobOptionsToFormFields,
 } from '../types/api';
-import { readApiBaseUrl } from '../services/apiBaseUrl';
 import {
   asObject,
   parseAdminAccountInfo,
@@ -69,14 +69,8 @@ function blankToNull(value: string | null | undefined): string | null {
 }
 
 export class WhisperXApiClient {
-  constructor(private configuredBaseUrl?: string) {}
-
   get baseUrl(): string {
-    return this.configuredBaseUrl ?? readApiBaseUrl();
-  }
-
-  setBaseUrl(baseUrl: string | null | undefined): void {
-    this.configuredBaseUrl = baseUrl?.trim() || undefined;
+    return API_BASE_URL;
   }
 
   private url(path: string): string {
@@ -98,7 +92,8 @@ export class WhisperXApiClient {
 
   async updateConfig(params: {
     adminToken: string;
-    model: string;
+    cliModel: string;
+    openaiModel: string;
     modelDir?: string | null;
     whisperxBackend?: 'cli' | 'openai';
     whisperxOpenaiBaseUrl?: string | null;
@@ -107,16 +102,19 @@ export class WhisperXApiClient {
     whisperxOpenaiTimeoutSeconds?: number;
     modelCacheOnly: boolean;
     nltkDataDir?: string | null;
-    apiBaseUrl?: string | null;
-    whisperxArgs: Record<string, unknown>;
+    whisperxCliArgs: Record<string, unknown>;
+    whisperxOpenaiArgs: Record<string, unknown>;
     pdfArgs?: Record<string, unknown>;
   }): Promise<BackendConfig> {
+    const whisperxBackend = params.whisperxBackend ?? 'cli';
+    const activeWhisperxArgs =
+      whisperxBackend === 'openai' ? params.whisperxOpenaiArgs : params.whisperxCliArgs;
     const response = await this.request('/admin/config', {
       method: 'PUT',
       bearerToken: params.adminToken,
       jsonBody: {
-        api_base_url: blankToNull(params.apiBaseUrl),
-        whisperx_model: params.model.trim(),
+        whisperx_cli_model: params.cliModel.trim(),
+        whisperx_openai_model: params.openaiModel.trim(),
         whisperx_model_dir: blankToNull(params.modelDir),
         whisperx_backend: params.whisperxBackend ?? 'cli',
         whisperx_openai_base_url: blankToNull(params.whisperxOpenaiBaseUrl),
@@ -125,7 +123,9 @@ export class WhisperXApiClient {
         whisperx_openai_timeout_seconds: params.whisperxOpenaiTimeoutSeconds ?? 3600,
         model_cache_only: params.modelCacheOnly,
         nltk_data_dir: blankToNull(params.nltkDataDir),
-        whisperx_args: params.whisperxArgs,
+        whisperx_args: activeWhisperxArgs,
+        whisperx_cli_args: params.whisperxCliArgs,
+        whisperx_openai_args: params.whisperxOpenaiArgs,
         opendataloader_pdf_args: params.pdfArgs ?? {},
       },
     });

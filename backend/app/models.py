@@ -338,8 +338,9 @@ class JobResultsResponse(BaseModel):
 
 
 class ConfigResponse(BaseModel):
-    api_base_url: str | None = None
     whisperx_model: str
+    whisperx_cli_model: str
+    whisperx_openai_model: str
     whisperx_model_dir: str | None
     whisperx_backend: Literal["cli", "openai"] = "cli"
     whisperx_openai_base_url: str | None = None
@@ -349,13 +350,17 @@ class ConfigResponse(BaseModel):
     nltk_data_dir: str | None = None
     whisperx_args: list[str] = Field(default_factory=list)
     whisperx_args_config: dict[str, Any] = Field(default_factory=dict)
+    whisperx_cli_args: list[str] = Field(default_factory=list)
+    whisperx_cli_args_config: dict[str, Any] = Field(default_factory=dict)
+    whisperx_openai_args_config: dict[str, Any] = Field(default_factory=dict)
     opendataloader_pdf_args: list[str] = Field(default_factory=list)
     opendataloader_pdf_args_config: dict[str, Any] = Field(default_factory=dict)
 
 
 class ConfigUpdateRequest(BaseModel):
-    api_base_url: str | None = Field(default=None, max_length=4096)
-    whisperx_model: str = Field(min_length=1, max_length=4096)
+    whisperx_model: str | None = Field(default=None, min_length=1, max_length=4096)
+    whisperx_cli_model: str | None = Field(default=None, min_length=1, max_length=4096)
+    whisperx_openai_model: str | None = Field(default=None, min_length=1, max_length=4096)
     whisperx_model_dir: str | None = Field(default=None, max_length=4096)
     whisperx_backend: Literal["cli", "openai"] = "cli"
     whisperx_openai_base_url: str | None = Field(default=None, max_length=4096)
@@ -365,20 +370,23 @@ class ConfigUpdateRequest(BaseModel):
     model_cache_only: bool = False
     nltk_data_dir: str | None = Field(default=None, max_length=4096)
     whisperx_args: dict[str, Any] = Field(default_factory=dict)
+    whisperx_cli_args: dict[str, Any] | None = None
+    whisperx_openai_args: dict[str, Any] | None = None
     opendataloader_pdf_args: dict[str, Any] = Field(default_factory=dict)
 
-    @field_validator("whisperx_model")
+    @field_validator("whisperx_model", "whisperx_cli_model", "whisperx_openai_model")
     @classmethod
-    def normalize_model(cls, value: str) -> str:
+    def normalize_model(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
         text = value.strip()
         if not text:
-            raise ValueError("whisperx_model must not be empty")
+            raise ValueError("model values must not be empty")
         if any(char in text for char in ("\x00", "\n", "\r")):
             raise ValueError("config values must be single-line text")
         return text
 
     @field_validator(
-        "api_base_url",
         "whisperx_model_dir",
         "nltk_data_dir",
         "whisperx_openai_base_url",

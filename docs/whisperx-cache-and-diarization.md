@@ -2,13 +2,14 @@
 
 ## 模型来源
 
-`whisperx_model` 可以是 WhisperX/Faster-Whisper 支持的模型名，也可以是后端机器可访问的本地模型目录。若使用本地目录，请确保目录结构满足上游 `whisperx` / `faster-whisper` 的加载要求。
+`whisperx_cli_model` 可以是 WhisperX/Faster-Whisper 支持的模型名，也可以是后端机器可访问的本地模型目录。`whisperx_openai_model` 则用于 OpenAI 兼容接口模式；切换执行方式时管理页会同步切换到对应默认模型。若使用本地目录，请确保目录结构满足上游 `whisperx` / `faster-whisper` 的加载要求。
 
 示例配置：
 
 ```json
 {
-  "whisperx_model": "/models/faster-whisper-large-v2",
+  "whisperx_cli_model": "/models/faster-whisper-large-v2",
+  "whisperx_openai_model": "large-v2",
   "whisperx_model_dir": "/models/whisperx-cache",
   "model_cache_only": true
 }
@@ -27,7 +28,7 @@
 
 ## 对齐模型
 
-可通过 `whisperx_args.align_model` 指定对齐模型名或本地路径。不同语言需要匹配的 wav2vec2/对齐模型。若中文或其他语言对齐失败，建议先用命令行直接运行 `whisperx` 验证上游模型加载，再把稳定参数写入后端配置。
+可通过 `whisperx_cli_args.align_model` 指定本机 CLI 模式的对齐模型名或本地路径；OpenAI 兼容接口模式使用 `whisperx_openai_args.align_model`，由远端服务解释。不同语言需要匹配的 wav2vec2/对齐模型。若中文或其他语言对齐失败，建议先用命令行直接运行 `whisperx` 验证上游模型加载，再把稳定参数写入后端配置。
 
 ## 说话人分离
 
@@ -37,7 +38,7 @@
 
 ```json
 {
-  "whisperx_args": {
+  "whisperx_cli_args": {
     "diarize_model": "/models/whisperx-cache/pyannote-speaker-diarization-community-1",
     "min_speakers": 1,
     "max_speakers": 4,

@@ -11,6 +11,8 @@ from typing import Any
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CONFIG_JSON_PATH = BACKEND_ROOT / "config.json"
 WHISPERX_ARGS_ENV = "WHISPERX_ARGS_JSON"
+WHISPERX_CLI_ARGS_ENV = "WHISPERX_CLI_ARGS_JSON"
+WHISPERX_OPENAI_ARGS_ENV = "WHISPERX_OPENAI_ARGS_JSON"
 OPENDATALOADER_PDF_ARGS_ENV = "OPENDATALOADER_PDF_ARGS_JSON"
 WHISPERX_BACKENDS = {"cli", "openai"}
 
@@ -39,6 +41,19 @@ _CONFIG_ARG_SPECS: dict[str, dict[str, Any]] = {
     "speaker_embeddings": {"flag": "--speaker_embeddings", "type": "flag"},
     "no_align": {"flag": "--no_align", "type": "flag"},
 }
+
+_OPENAI_CONFIG_ARG_NAMES: frozenset[str] = frozenset(
+    {
+        "batch_size",
+        "chunk_size",
+        "no_align",
+        "align_model",
+        "diarize_model",
+        "min_speakers",
+        "max_speakers",
+        "speaker_embeddings",
+    }
+)
 
 _PDF_CONFIG_ARG_SPECS: dict[str, dict[str, Any]] = {
     "format": {
@@ -99,21 +114,24 @@ _PDF_CONFIG_ARG_SPECS: dict[str, dict[str, Any]] = {
 }
 
 
-
 @dataclass(frozen=True)
 class Settings:
     data_root: Path
     whisperx_model_dir: str | None
     whisperx_model: str = "small"
+    whisperx_cli_model: str = "small"
+    whisperx_openai_model: str = "large-v2"
     whisperx_backend: str = "cli"
     whisperx_openai_base_url: str | None = None
     whisperx_openai_api_key: str | None = None
     whisperx_openai_timeout_seconds: float = 3600.0
-    api_base_url: str | None = None
     model_cache_only: bool = False
     nltk_data_dir: str | None = None
     whisperx_args: tuple[str, ...] = ()
     whisperx_args_config: dict[str, Any] = field(default_factory=dict)
+    whisperx_cli_args: tuple[str, ...] = ()
+    whisperx_cli_args_config: dict[str, Any] = field(default_factory=dict)
+    whisperx_openai_args_config: dict[str, Any] = field(default_factory=dict)
     opendataloader_pdf_args: tuple[str, ...] = ()
     opendataloader_pdf_args_config: dict[str, Any] = field(default_factory=dict)
     admin_username: str | None = None
@@ -156,6 +174,15 @@ def _normalize_whisperx_backend(value: Any) -> str:
         allowed = ", ".join(sorted(WHISPERX_BACKENDS))
         raise ValueError(f"whisperx_backend must be one of: {allowed}")
     return text
+
+
+def _model_setting(value: Any, name: str, default: str = "small") -> str:
+    model = (_optional_str(value) or default).strip()
+    if not model:
+        raise ValueError(f"{name} must not be empty")
+    if any(char in model for char in ("\x00", "\n", "\r")):
+        raise ValueError(f"{name} must be single-line text")
+    return model
 
 
 def _positive_float(value: Any, name: str, default: float) -> float:
@@ -378,6 +405,61 @@ def normalize_whisperx_args(value: Any) -> tuple[str, ...]:
     return tuple(argv)
 
 
+def normalize_whisperx_args_config(
+    value: Any,
+    *,
+    context: str = "whisperx_args",
+    allowed_names: frozenset[str] | None = None,
+    reject_known_unsupported: bool = True,
+) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError(f"{context} must be a JSON object")
+
+    normalized: dict[str, Any] = {}
+    speaker_counts: dict[str, int] = {}
+    for raw_name, raw_value in value.items():
+        name = _normalize_arg_name(str(raw_name))
+        spec = _CONFIG_ARG_SPECS.get(name)
+        if spec is None:
+            allowed = ", ".join(sorted(allowed_names or _CONFIG_ARG_SPECS))
+            raise ValueError(
+                f"Unsupported {context} key '{raw_name}'. Allowed keys: {allowed}"
+            )
+        if allowed_names is not None and name not in allowed_names:
+            if reject_known_unsupported:
+                allowed = ", ".join(sorted(allowed_names))
+                raise ValueError(
+                    f"Unsupported {context} key '{raw_name}'. Allowed keys: {allowed}"
+                )
+            continue
+        coerced = _coerce_config_arg_value(name, raw_value, spec)
+        if name in {"min_speakers", "max_speakers"} and coerced not in {"", None}:
+            speaker_counts[name] = int(coerced)
+        normalized[name] = raw_value
+    if (
+        "min_speakers" in speaker_counts
+        and "max_speakers" in speaker_counts
+        and speaker_counts["min_speakers"] > speaker_counts["max_speakers"]
+    ):
+        raise ValueError(f"{context}.min_speakers must be <= max_speakers")
+    return normalized
+
+
+def normalize_whisperx_openai_args_config(
+    value: Any,
+    *,
+    from_legacy: bool = False,
+) -> dict[str, Any]:
+    return normalize_whisperx_args_config(
+        value,
+        context="whisperx_openai_args",
+        allowed_names=_OPENAI_CONFIG_ARG_NAMES,
+        reject_known_unsupported=not from_legacy,
+    )
+
+
 def normalize_opendataloader_pdf_args(value: Any) -> tuple[str, ...]:
     if value is None:
         value = {}
@@ -439,14 +521,38 @@ def normalize_opendataloader_pdf_args_config(value: Any) -> dict[str, Any]:
     return normalized
 
 
-def _whisperx_args_config(config: dict[str, Any]) -> Any:
-    env_value = os.getenv(WHISPERX_ARGS_ENV)
-    if env_value:
-        try:
-            return json.loads(env_value)
-        except json.JSONDecodeError as exc:
-            raise ValueError(f"{WHISPERX_ARGS_ENV} must be valid JSON") from exc
-    return config.get("whisperx_args")
+_UNSET = object()
+
+
+def _json_env_value(name: str) -> Any:
+    env_value = os.getenv(name)
+    if env_value is None or env_value.strip() == "":
+        return _UNSET
+    try:
+        return json.loads(env_value)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{name} must be valid JSON") from exc
+
+
+def _whisperx_backend_args_config(
+    config: dict[str, Any], *, backend: str
+) -> tuple[Any, bool]:
+    if backend == "cli":
+        env_name = WHISPERX_CLI_ARGS_ENV
+        config_key = "whisperx_cli_args"
+    else:
+        env_name = WHISPERX_OPENAI_ARGS_ENV
+        config_key = "whisperx_openai_args"
+
+    specific_env = _json_env_value(env_name)
+    if specific_env is not _UNSET:
+        return specific_env, False
+    legacy_env = _json_env_value(WHISPERX_ARGS_ENV)
+    if legacy_env is not _UNSET:
+        return legacy_env, True
+    if config_key in config:
+        return config.get(config_key), False
+    return config.get("whisperx_args"), True
 
 
 def _opendataloader_pdf_args_config(config: dict[str, Any]) -> Any:
@@ -500,6 +606,9 @@ def write_backend_config_update(updates: dict[str, Any]) -> None:
     config = load_backend_config()
     for key, value in updates.items():
         config[key] = value
+    config.pop("api_base_url", None)
+    config.pop("whisperx_model", None)
+    config.pop("whisperx_args", None)
 
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_name = tempfile.mkstemp(
@@ -546,19 +655,28 @@ def get_settings() -> Settings:
     else:
         model_dir = None
 
-    model = (
-        os.getenv("WHISPERX_MODEL")
-        or _optional_str(config.get("whisperx_model"))
-        or "small"
-    ).strip()
-    if not model:
-        raise ValueError("WHISPERX_MODEL must not be empty")
-
     whisperx_backend = _normalize_whisperx_backend(
         os.getenv("WHISPERX_BACKEND")
         or _optional_str(config.get("whisperx_backend"))
         or "cli"
     )
+    legacy_model = os.getenv("WHISPERX_MODEL") or _optional_str(
+        config.get("whisperx_model")
+    )
+    cli_model = _model_setting(
+        os.getenv("WHISPERX_CLI_MODEL")
+        or _optional_str(config.get("whisperx_cli_model"))
+        or legacy_model,
+        "whisperx_cli_model",
+    )
+    openai_model = _model_setting(
+        os.getenv("WHISPERX_OPENAI_MODEL")
+        or _optional_str(config.get("whisperx_openai_model"))
+        or legacy_model,
+        "whisperx_openai_model",
+        "large-v2",
+    )
+    model = openai_model if whisperx_backend == "openai" else cli_model
     whisperx_openai_base_url = (
         os.getenv("WHISPERX_OPENAI_BASE_URL")
         or _optional_str(config.get("whisperx_openai_base_url"))
@@ -589,11 +707,6 @@ def get_settings() -> Settings:
         nltk_data_dir = None
 
     env_cache_only = os.getenv("WHISPERX_MODEL_CACHE_ONLY")
-    api_base_url = (
-        os.getenv("MEDIA_TO_MD_API_BASE_URL")
-        or _optional_str(config.get("api_base_url"))
-        or None
-    )
     admin_username = (
         os.getenv("WHISPERX_ADMIN_USERNAME")
         or _optional_str(config.get("admin_username"))
@@ -604,9 +717,20 @@ def get_settings() -> Settings:
         or _optional_str(config.get("admin_password"))
         or None
     )
-    raw_whisperx_args = _whisperx_args_config(config)
-    whisperx_args_config = (
-        dict(raw_whisperx_args) if isinstance(raw_whisperx_args, dict) else {}
+    raw_cli_args, _ = _whisperx_backend_args_config(config, backend="cli")
+    raw_openai_args, openai_args_from_legacy = _whisperx_backend_args_config(
+        config, backend="openai"
+    )
+    whisperx_cli_args_config = normalize_whisperx_args_config(
+        raw_cli_args, context="whisperx_cli_args"
+    )
+    whisperx_openai_args_config = normalize_whisperx_openai_args_config(
+        raw_openai_args, from_legacy=openai_args_from_legacy
+    )
+    active_whisperx_args_config = (
+        whisperx_openai_args_config
+        if whisperx_backend == "openai"
+        else whisperx_cli_args_config
     )
     raw_pdf_args = _opendataloader_pdf_args_config(config)
     if raw_pdf_args is None:
@@ -616,18 +740,22 @@ def get_settings() -> Settings:
     return Settings(
         data_root=data_root,
         whisperx_model=model,
+        whisperx_cli_model=cli_model,
+        whisperx_openai_model=openai_model,
         whisperx_model_dir=model_dir,
         whisperx_backend=whisperx_backend,
         whisperx_openai_base_url=whisperx_openai_base_url,
         whisperx_openai_api_key=whisperx_openai_api_key,
         whisperx_openai_timeout_seconds=whisperx_openai_timeout_seconds,
-        api_base_url=api_base_url,
         model_cache_only=_bool_config(
             env_cache_only, _bool_config(config.get("model_cache_only"), False)
         ),
         nltk_data_dir=nltk_data_dir,
-        whisperx_args=normalize_whisperx_args(raw_whisperx_args),
-        whisperx_args_config=whisperx_args_config,
+        whisperx_args=normalize_whisperx_args(active_whisperx_args_config),
+        whisperx_args_config=active_whisperx_args_config,
+        whisperx_cli_args=normalize_whisperx_args(whisperx_cli_args_config),
+        whisperx_cli_args_config=whisperx_cli_args_config,
+        whisperx_openai_args_config=whisperx_openai_args_config,
         opendataloader_pdf_args=normalize_opendataloader_pdf_args(raw_pdf_args),
         opendataloader_pdf_args_config=opendataloader_pdf_args_config,
         admin_username=admin_username,

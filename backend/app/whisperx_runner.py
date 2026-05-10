@@ -365,13 +365,22 @@ class JobStorageWhisperXRunner(WhisperXRunner):
     def from_settings(cls, storage, settings) -> "JobStorageWhisperXRunner":
         model_dir = getattr(settings, "whisperx_model_dir", None)
         nltk_data_dir = getattr(settings, "nltk_data_dir", None)
+        config_args = tuple(getattr(settings, "whisperx_cli_args", ()))
+        if not config_args:
+            config_args = tuple(getattr(settings, "whisperx_args", ()))
+        default_model = (
+            getattr(settings, "whisperx_model", "small")
+            if getattr(settings, "whisperx_backend", "cli") == "cli"
+            else getattr(settings, "whisperx_cli_model", None)
+            or getattr(settings, "whisperx_model", "small")
+        )
         return cls(
             storage,
             WhisperXRunnerConfig(
                 model_dir=Path(model_dir) if model_dir else None,
-                default_model=getattr(settings, "whisperx_model", "small"),
+                default_model=default_model,
                 nltk_data_dir=Path(nltk_data_dir) if nltk_data_dir else None,
-                config_args=tuple(getattr(settings, "whisperx_args", ())),
+                config_args=config_args,
             ),
         )
 

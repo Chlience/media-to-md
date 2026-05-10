@@ -1,74 +1,81 @@
-# Media-to-MD
+<h1 align="center">Media-to-MD</h1>
 
-Media-to-MD 是一个本地单机服务，把复杂媒体和文档转换成适合大模型继续处理的 Markdown / TXT 等文件。当前版本聚焦两条稳定路径：
+<p align="center">
+  <strong>A self-hosted audio, video, and PDF to Markdown workspace.</strong>
+</p>
 
-- **音视频转写**：上传常见音频/视频文件，默认调用本机 `whisperx` 提取字幕、转写文本和可选时间轴文件，也可切换到 WhisperX OpenAI 兼容 HTTP 服务。
-- **PDF 文档解析**：上传 PDF，调用本机 `opendataloader-pdf` 输出原始 Markdown/TXT，并额外生成去除图片文字污染的 `*_clear.md`。
+<p align="center">
+  <a href="./README_zh.md">中文</a> · <a href="#deployment-guide">Deployment Guide</a> · <a href="#configuration">Configuration</a> · <a href="#verification">Verification</a> · <a href="#documentation">Documentation</a>
+</p>
 
-项目默认面向个人本地工作站或内网机器，不包含公网 SaaS、多用户隔离、GPU 调度、HTTPS 或 Docker 编排。
+<p align="center">
+  <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-backend-009688?logo=fastapi" />
+  <img alt="React" src="https://img.shields.io/badge/React-frontend-61DAFB?logo=react" />
+  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-typed-blue?logo=typescript" />
+  <img alt="Vite" src="https://img.shields.io/badge/Vite-build-646CFF?logo=vite" />
+  <img alt="Vitest" src="https://img.shields.io/badge/Vitest-tested-6E9F18?logo=vitest" />
+  <img alt="Storage" src="https://img.shields.io/badge/storage-local%20filesystem-orange" />
+</p>
 
-## 功能概览
+---
 
-- 拖拽上传音视频或 PDF。
-- 任务状态轮询、结果 ZIP 下载和单文件 artifact 下载。
-- WhisperX 支持默认模型、本地模型目录、缓存只读模式、语言选择和说话人分离开关。
-- PDF 支持 Markdown/TXT 输出、图片输出策略、页码范围、表格/阅读顺序、Hybrid 模式和 Markdown 清洗力度。
-- 管理页提供单管理员登录、任务列表/分页/筛选、详情、事件、日志、删除任务和后端运行配置维护。
-- 后端保存上传文件、输出文件、事件和日志；公开页面不展示运行日志或文档预览。
+## What is Media-to-MD?
 
-## 技术栈
+Media-to-MD is a self-hosted workspace for converting audio, video, and PDF files into Markdown-oriented artifacts such as Markdown, TXT, SRT, VTT, and JSON.
 
-| 层 | 技术 |
+It is designed for a personal workstation or an internal server. Public SaaS hosting, multi-tenant isolation, GPU scheduling, HTTPS certificates, and Docker orchestration are intentionally left to the deployment environment.
+
+## Features
+
+- Audio/video transcription through either a local `whisperx` CLI or an OpenAI-compatible WhisperX HTTP service.
+- PDF parsing through a local `opendataloader-pdf` CLI, including raw Markdown/TXT and cleaned `*_clear.md` output.
+- Web workbench for drag-and-drop uploads, task polling, status display, and `artifacts.zip` downloads.
+- Admin page for single-admin login, task list, details, events, logs, deletion, and backend runtime configuration.
+- Local filesystem storage for uploads, outputs, logs, events, and manifests.
+
+## Tech Stack
+
+| Layer | Choice |
 | --- | --- |
-| 后端 | FastAPI、uv、pytest、直接调用本机 `whisperx` / `opendataloader-pdf`，或调用 WhisperX OpenAI 兼容接口 |
-| 前端 | React、TypeScript、Vite、Vitest |
-| 数据 | 本地文件系统任务目录，不依赖数据库 |
+| Backend | FastAPI, uv, pytest |
+| Frontend | React, TypeScript, Vite, Vitest |
+| Media runner | Local `whisperx` CLI or OpenAI-compatible WhisperX HTTP service |
+| PDF runner | Local `opendataloader-pdf` CLI |
+| Storage | Local filesystem job directory |
 
-## 目录结构
+## Deployment Guide
 
-```text
-backend/                  FastAPI 后端、任务存储、CLI runner、配置模板
-frontend/                 React/Vite 前端工作台和管理页
-docs/                     架构、本地安装、直接 CLI 和模型缓存说明
-.env.example              可选环境变量覆盖模板
-```
+### 1. Install system dependencies
 
-## 快速开始
-
-### 1. 安装并验证外部命令
-
-默认后端运行时直接调用本机 CLI，不会在任务运行时临时拉取包。建议把 WhisperX 与 OpenDataLoader PDF 安装成独立的 `uv tool`，避免和后端 FastAPI 虚拟环境相互污染。如果音视频转写切到 `whisperx_backend=openai`，Media-to-MD 只需要能访问已启动的 WhisperX OpenAI 兼容服务。
-
-先安装系统依赖：
+Ubuntu / Debian example:
 
 ```bash
-# Ubuntu / Debian 示例
 sudo apt update
 sudo apt install -y ffmpeg openjdk-17-jre
 ```
 
-再安装 Python CLI：
+WhisperX normally needs `ffmpeg` for media processing. PDF parsing requires Java 11+.
+
+### 2. Choose the media transcription backend
+
+#### Option A: local WhisperX CLI
+
+Use this when Media-to-MD should run WhisperX directly on the backend machine:
 
 ```bash
 uv tool install --python 3.12 whisperx
 uv tool install --python 3.12 opendataloader-pdf
+uv tool update-shell
 ```
 
-如果需要 OpenDataLoader PDF 的 Hybrid/OCR 能力，安装带 extra 的版本：
+If you need OpenDataLoader PDF Hybrid/OCR support:
 
 ```bash
 uv tool install --python 3.12 "opendataloader-pdf[hybrid]"
-```
-
-启用 `opendataloader_pdf_args.hybrid = "docling-fast"` 前，需要先启动本机 Hybrid 服务：
-
-```bash
 opendataloader-pdf-hybrid --port 5002
 ```
 
-确认 `uv` 的工具目录已在后端进程的 `PATH` 中。必要时执行 `uv tool update-shell` 后重新打开终端。
-
-验证命令：
+Verify that the backend process can find the commands:
 
 ```bash
 whisperx --help
@@ -77,15 +84,32 @@ java -version
 ffmpeg -version
 ```
 
-PDF 解析依赖 Java 11+；WhisperX 处理音视频通常需要 `ffmpeg`。若命令缺失，请先修正 `PATH`，再启动后端。
+#### Option B: OpenAI-compatible WhisperX service
 
-### 2. 配置后端
+Use this when GPU work, model loading, or WhisperX execution should live in a separate process or internal server.
+
+For local deployment, you can use:
+
+<https://github.com/Chlience/whisperx-openai-server>
+
+After starting that service, point `whisperx_openai_base_url` to its `/v1` endpoint:
+
+```json
+{
+  "whisperx_backend": "openai",
+  "whisperx_openai_base_url": "http://localhost:9000/v1",
+  "whisperx_openai_api_key": null,
+  "whisperx_openai_model": "large-v2"
+}
+```
+
+### 3. Configure the backend
 
 ```bash
 cp backend/config.example.json backend/config.json
 ```
 
-编辑 `backend/config.json`，至少修改管理员密码：
+At minimum, change the admin password:
 
 ```json
 {
@@ -94,9 +118,26 @@ cp backend/config.example.json backend/config.json
 }
 ```
 
-完整配置以 `backend/config.example.json` 为准。`.env.example` 只提供少量环境变量覆盖，不是主要配置入口。
+## Configuration
 
-### 3. 启动后端
+Common backend config keys:
+
+| Key | Purpose |
+| --- | --- |
+| `data_root` | Job data directory |
+| `whisperx_backend` | `cli` or `openai` |
+| `whisperx_cli_model` | Default model for local CLI mode |
+| `whisperx_openai_model` | Default model for OpenAI-compatible mode |
+| `whisperx_model_dir` | Local model cache directory |
+| `model_cache_only` | Whether to use local model cache only |
+| `whisperx_cli_args` | Local CLI mode arguments |
+| `whisperx_openai_args` | Per-request multipart arguments forwarded to the OpenAI-compatible service |
+| `opendataloader_pdf_args` | PDF runner arguments |
+| `admin_username` / `admin_password` | Admin page credentials |
+
+The complete reference is `backend/config.example.json`. Saving settings from the admin page writes back to `backend/config.json`.
+
+### 4. Start the backend
 
 ```bash
 cd backend
@@ -104,9 +145,19 @@ uv sync --dev
 uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-默认 API 地址为：`http://localhost:8000/api`。Swagger/OpenAPI 地址：`http://localhost:8000/docs`。
+Default API URL:
 
-### 4. 启动前端
+```text
+http://localhost:8000/api
+```
+
+Swagger / OpenAPI:
+
+```text
+http://localhost:8000/docs
+```
+
+### 5. Start the frontend
 
 ```bash
 cd frontend
@@ -114,66 +165,56 @@ npm install
 MEDIA_TO_MD_API_BASE_URL=http://localhost:8000/api npm run dev
 ```
 
-浏览器访问 Vite 输出的地址，普通工作台在 `/#/`，管理页在 `/#/admin`。
+Open the Vite URL in your browser:
 
-## 运行配置
+- Workbench: `/#/`
+- Admin page: `/#/admin`
 
-后端配置的单一事实源是 `backend/config.json`。管理页保存配置时也会写回这个文件。
+`MEDIA_TO_MD_API_BASE_URL` is a frontend startup/build-time variable. Restart the Vite dev server after changing it; production bundles must be rebuilt. The admin page displays the current API URL as read-only and does not write browser-local overrides.
 
-### 常用根配置
+### 6. Build for production
 
-| 键 | 含义 |
-| --- | --- |
-| `data_root` | 任务数据根目录，保存上传、输出、日志和事件。 |
-| `api_base_url` | 前端默认 API 地址，也可由 `MEDIA_TO_MD_API_BASE_URL` 覆盖。 |
-| `whisperx_model` | WhisperX 默认模型名或后端可访问的本地模型目录。 |
-| `whisperx_backend` | 音视频转写执行方式：`cli`（默认）或 `openai`。 |
-| `whisperx_openai_base_url` | `openai` 模式下的 OpenAI 兼容服务地址，如 `http://localhost:9000/v1`。 |
-| `whisperx_openai_api_key` | `openai` 模式下发送的 Bearer API Key；服务端未开启鉴权时可留空。 |
-| `whisperx_openai_timeout_seconds` | `openai` 模式下 HTTP 请求超时时间。 |
-| `whisperx_model_dir` | 模型缓存目录，传给 WhisperX 的 `--model_dir`。 |
-| `model_cache_only` | 是否只使用本地缓存模型。 |
-| `nltk_data_dir` | NLTK 数据目录，通常放在模型缓存目录下。 |
-| `admin_username` / `admin_password` | 本地单管理员账号。 |
+Run the backend under your preferred process manager or reverse proxy. Build the frontend like this:
 
-`MEDIA_TO_MD_API_BASE_URL` 是前端启动/构建时变量；修改后需要重启前端 dev server，生产包需要重新构建。若浏览器保存过旧 API 地址，可在管理页先点“应用 API 地址到本浏览器”，或清理 localStorage 的 `media_to_md_api_base_url`。
+```bash
+cd frontend
+MEDIA_TO_MD_API_BASE_URL=https://your-domain.example/api npm run build
+```
 
-### WhisperX 可配置参数
+Static assets are written to:
 
-`whisperx_args` 只保留常用且适合本地服务维护的参数：
+```text
+frontend/dist/
+```
 
-`batch_size`, `device`, `device_index`, `compute_type`, `threads`, `chunk_size`, `vad_method`, `vad_onset`, `vad_offset`, `align_model`, `diarize_model`, `min_speakers`, `max_speakers`, `speaker_embeddings`, `no_align`
+For public access, put HTTPS, domain routing, access control, and upload-size limits in front of the app.
 
-### OpenDataLoader PDF 可配置参数
+## Job Data
 
-`opendataloader_pdf_args` 只保留不会绕开后端任务输出边界的参数：
-
-`format`, `pages`, `threads`, `image_output`, `image_format`, `table_method`, `reading_order`, `hybrid`, `hybrid_mode`, `hybrid_timeout`
-
-后端会拒绝自定义输出目录、标准输出重定向、图片目录、远程 Hybrid URL 等容易破坏任务 artifact 收集边界的参数。
-
-## 任务数据与输出
-
-每个任务位于：
+Each job is stored under:
 
 ```text
 <data_root>/jobs/<job_id>/
-  input/               上传文件
-  output/              转换产物
-  logs/job.log         运行日志
-  logs/events.jsonl    任务事件
-  manifest.json        任务元数据和可下载 artifact 清单
+  input/               Uploaded file
+  output/              Conversion artifacts
+  logs/job.log         Runtime log
+  logs/events.jsonl    Job events
+  manifest.json        Job metadata and artifact manifest
 ```
 
-公开下载入口只允许下载 manifest 中列出的 artifact。PDF 任务在生成 Markdown 时会保留原始 Markdown，并输出当前清洗产物 `<origin>_clear.md`，其 artifact format 为 `markdown_clear`。
+The frontend downloads results as `artifacts.zip` by default.
 
-## 验证
+## Verification
+
+Backend:
 
 ```bash
 cd backend
 uv run pytest
 uv run --with ruff ruff check .
 ```
+
+Frontend:
 
 ```bash
 cd frontend
@@ -182,10 +223,10 @@ npm run typecheck
 npm run build
 ```
 
-更多细节见：
+## Documentation
 
-- [本地安装与烟测](docs/local-setup.md)
-- [架构说明](docs/architecture.md)
-- [直接 CLI runner 契约](docs/direct-cli-runners.md)
-- [WhisperX 模型缓存与说话人分离](docs/whisperx-cache-and-diarization.md)
-- [WhisperX OpenAI 兼容后端接入](docs/whisperx-openai-backend.md)
+- [Local setup and smoke test](docs/local-setup.md)
+- [Architecture](docs/architecture.md)
+- [Direct CLI runner contract](docs/direct-cli-runners.md)
+- [WhisperX model cache and diarization](docs/whisperx-cache-and-diarization.md)
+- [WhisperX OpenAI-compatible backend](docs/whisperx-openai-backend.md)
