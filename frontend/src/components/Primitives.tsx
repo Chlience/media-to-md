@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { Artifact, JobStatusValue } from '../types/api';
+import type { JobStatus, JobStatusValue } from '../types/api';
 
 type BoxProps = {
   title: string;
@@ -51,32 +51,44 @@ export function MetaList({
   );
 }
 
-export function ArtifactList({
-  artifacts,
-  downloadUrl,
+export function ArtifactZipDownload({
+  job,
+  zipUrl,
 }: {
-  artifacts: Artifact[];
-  downloadUrl?: (artifact: Artifact) => string;
+  job: JobStatus | null;
+  zipUrl: (jobId: string) => string;
 }) {
-  if (artifacts.length === 0) {
-    return <div className="callout">任务成功后会在这里显示下载链接。</div>;
+  if (!job) {
+    return <div className="callout">任务成功后会在这里提供 artifacts.zip 下载。</div>;
   }
 
+  if (job.status !== 'succeeded') {
+    return (
+      <div className="status-note">
+        当前任务状态为 <span className="mono">{job.status}</span>，成功后自动打包可下载产物。
+      </div>
+    );
+  }
+
+  if (job.artifacts.length === 0) {
+    return <div className="callout">任务已完成，但没有可下载 artifacts。</div>;
+  }
+
+  const totalBytes = job.artifacts.reduce((sum, artifact) => sum + artifact.sizeBytes, 0);
+
   return (
-    <div className="artifact-list">
-      {artifacts.map((artifact) => (
-        <div className="artifact-row" key={artifact.name}>
-          <div>
-            <div className="file-name">{artifact.name}</div>
-            <div className="small">
-              {artifact.format || 'artifact'} · {formatBytes(artifact.sizeBytes)}
-            </div>
-          </div>
-          <a className="btn" href={downloadUrl?.(artifact) ?? '#'} download>
-            下载
-          </a>
-        </div>
-      ))}
+    <div className="zip-download">
+      <MetaList
+        items={[
+          { label: '文件数', value: `${job.artifacts.length} 个` },
+          { label: '总大小', value: formatBytes(totalBytes) },
+          { label: '打包名', value: `${job.jobId}-artifacts.zip`, mono: true },
+        ]}
+      />
+      <div style={{ height: 14 }} />
+      <a className="btn btn-primary" href={zipUrl(job.jobId)} download>
+        下载 artifacts.zip
+      </a>
     </div>
   );
 }

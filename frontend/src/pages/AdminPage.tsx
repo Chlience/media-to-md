@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { WhisperXApiClient } from '../api/client';
 import { AppShell, PageHeader } from '../components/Shell';
 import {
-  ArtifactList,
+  ArtifactZipDownload,
   Box,
   MetaList,
   StatusPill,
@@ -46,6 +46,7 @@ const defaultWhisperxArgDisplay = {
   minSpeakers: '',
   maxSpeakers: '',
   speakerEmbeddings: false,
+  noAlign: false,
 } as const;
 
 type Filter = (typeof filters)[number];
@@ -178,6 +179,12 @@ export function AdminPage() {
     }
   };
 
+  const closeDetail = () => {
+    setSelectedJob(null);
+    setSelectedEvents([]);
+    setSelectedLog('');
+  };
+
   const applyBrowserApiBaseUrl = (): string => {
     const normalized = saveApiBaseUrl(apiBaseUrl);
     api.setBaseUrl(normalized);
@@ -192,6 +199,22 @@ export function AdminPage() {
     const timer = setInterval(() => void loadJobs(token).catch((nextError) => setError(errorMessage(nextError))), 3000);
     return () => clearInterval(timer);
   }, [token]);
+
+  useEffect(() => {
+    if (!selectedJob) return undefined;
+    document.body.classList.add('modal-open');
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeDetail();
+      }
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.body.classList.remove('modal-open');
+      window.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [selectedJob]);
 
   const login = async (event: FormEvent) => {
     event.preventDefault();
@@ -345,7 +368,7 @@ export function AdminPage() {
     setError(null);
     try {
       await api.deleteJob({ adminToken: token, jobId: job.jobId });
-      if (selectedJob?.jobId === job.jobId) setSelectedJob(null);
+      if (selectedJob?.jobId === job.jobId) closeDetail();
       await loadJobs(token);
     } catch (nextError) {
       setError(errorMessage(nextError));
@@ -513,22 +536,40 @@ export function AdminPage() {
                     <div className="form-grid">
                       <div className="field"><label className="label" htmlFor="cfg-whisperx-backend">执行方式</label><select id="cfg-whisperx-backend" className="select" value={whisperxBackend} onChange={(event) => setWhisperxBackend(event.target.value as WhisperxBackend)}><option value="cli">本机 CLI</option><option value="openai">OpenAI 兼容接口</option></select></div>
                       <div className="field"><label className="label" htmlFor="cfg-model">默认模型</label><input id="cfg-model" className="input" value={model} placeholder={defaultWhisperxModel} onChange={(event) => setModel(event.target.value)} /></div>
-                      <div className="field"><label className="label" htmlFor="cfg-model-dir">模型缓存目录</label><input id="cfg-model-dir" className="input mono" value={modelDir} placeholder="CLI 模式使用；OpenAI 模式由远端服务控制" onChange={(event) => setModelDir(event.target.value)} /></div>
-                      <div className="field"><label className="label" htmlFor="cfg-openai-base-url">OpenAI Base URL</label><input id="cfg-openai-base-url" className="input mono" value={openaiBaseUrl} placeholder="http://localhost:8000/v1" onChange={(event) => setOpenaiBaseUrl(event.target.value)} /></div>
-                      <div className="field"><label className="label" htmlFor="cfg-openai-api-key">OpenAI API Key</label><input id="cfg-openai-api-key" className="input mono" type="password" value={openaiApiKey} placeholder={openaiApiKeyConfigured ? '已配置；留空保持不变' : '未配置则不发送 Authorization'} onChange={(event) => setOpenaiApiKey(event.target.value)} /></div>
-                      <div className="field"><label className="label" htmlFor="cfg-openai-timeout">OpenAI timeout seconds</label><input id="cfg-openai-timeout" className="input mono" value={openaiTimeoutSeconds} onChange={(event) => setOpenaiTimeoutSeconds(event.target.value)} /></div>
-                      <div className="field"><label className="label" htmlFor="cfg-openai-clear-key">清除 OpenAI Key</label><select id="cfg-openai-clear-key" className="select" value={String(openaiClearApiKey)} onChange={(event) => setOpenaiClearApiKey(event.target.value === 'true')}><option value="false">false</option><option value="true">true</option></select></div>
-                      <div className="field"><label className="label" htmlFor="cfg-device">Device</label><select id="cfg-device" className="select" value={whisperxArgValue('device', defaultWhisperxArgDisplay.device)} onChange={(event) => setWhisperxArg('device', event.target.value)}><option value="">后端默认（未指定）</option><option value="cuda">cuda</option><option value="cpu">cpu</option></select></div>
-                      <div className="field"><label className="label" htmlFor="cfg-compute-type">Compute type</label><select id="cfg-compute-type" className="select" value={whisperxArgValue('compute_type', defaultWhisperxArgDisplay.computeType)} onChange={(event) => setWhisperxArg('compute_type', event.target.value)}><option value="default">default</option><option value="float16">float16</option><option value="float32">float32</option><option value="int8">int8</option></select></div>
-                      <div className="field"><label className="label" htmlFor="cfg-batch-size">Batch size</label><input id="cfg-batch-size" className="input mono" value={whisperxArgValue('batch_size', defaultWhisperxArgDisplay.batchSize)} onChange={(event) => setWhisperxArg('batch_size', event.target.value)} /></div>
-                      <div className="field"><label className="label" htmlFor="cfg-chunk-size">Chunk size</label><input id="cfg-chunk-size" className="input mono" value={whisperxArgValue('chunk_size', defaultWhisperxArgDisplay.chunkSize)} placeholder="后端默认" onChange={(event) => setWhisperxArg('chunk_size', event.target.value)} /></div>
-                      <div className="field"><label className="label" htmlFor="cfg-align-model">Align model</label><input id="cfg-align-model" className="input" value={whisperxArgValue('align_model', defaultWhisperxArgDisplay.alignModel)} placeholder="后端自动" onChange={(event) => setWhisperxArg('align_model', event.target.value)} /></div>
-                      <div className="field"><label className="label" htmlFor="cfg-cache-only">仅使用本地缓存</label><select id="cfg-cache-only" className="select" value={String(modelCacheOnly)} onChange={(event) => setModelCacheOnly(event.target.value === 'true')}><option value="true">true</option><option value="false">false</option></select></div>
-                      <div className="field field-full"><label className="label" htmlFor="cfg-diarize-model">Diarize model</label><input id="cfg-diarize-model" className="input mono" value={whisperxArgValue('diarize_model', defaultWhisperxArgDisplay.diarizeModel)} placeholder="后端默认不指定；例如 /models/whisperx-cache/pyannote-speaker-diarization-community-1" onChange={(event) => setWhisperxArg('diarize_model', event.target.value)} /></div>
-                      <div className="field"><label className="label" htmlFor="cfg-min-speakers">Min speakers</label><input id="cfg-min-speakers" className="input mono" type="number" min="1" value={whisperxArgValue('min_speakers', defaultWhisperxArgDisplay.minSpeakers)} placeholder="后端默认：自动" onChange={(event) => setWhisperxArg('min_speakers', event.target.value)} /></div>
-                      <div className="field"><label className="label" htmlFor="cfg-max-speakers">Max speakers</label><input id="cfg-max-speakers" className="input mono" type="number" min="1" value={whisperxArgValue('max_speakers', defaultWhisperxArgDisplay.maxSpeakers)} placeholder="后端默认：自动" onChange={(event) => setWhisperxArg('max_speakers', event.target.value)} /></div>
-                      <div className="field"><label className="label" htmlFor="cfg-speaker-embeddings">Speaker embeddings</label><select id="cfg-speaker-embeddings" className="select" value={String(whisperxArgBooleanValue('speaker_embeddings', defaultWhisperxArgDisplay.speakerEmbeddings))} onChange={(event) => setWhisperxBooleanArg('speaker_embeddings', event.target.value === 'true')}><option value="false">false</option><option value="true">true</option></select></div>
-                      <div className="field field-full"><label className="label" htmlFor="cfg-nltk">NLTK data dir</label><input id="cfg-nltk" className="input mono" value={nltkDataDir} placeholder="未设置时跟随模型缓存目录 / nltk_data" onChange={(event) => setNltkDataDir(event.target.value)} /></div>
+                      {whisperxBackend === 'openai' ? (
+                        <>
+                          <div className="field field-full"><div className="status-note">OpenAI 模式只显示接口配置，以及会随 multipart 请求转发给远端服务的参数；设备、缓存和 compute type 由远端服务控制。</div></div>
+                          <div className="field"><label className="label" htmlFor="cfg-openai-base-url">OpenAI Base URL</label><input id="cfg-openai-base-url" className="input mono" value={openaiBaseUrl} placeholder="http://localhost:9000/v1" onChange={(event) => setOpenaiBaseUrl(event.target.value)} /></div>
+                          <div className="field"><label className="label" htmlFor="cfg-openai-api-key">OpenAI API Key</label><input id="cfg-openai-api-key" className="input mono" type="password" value={openaiApiKey} placeholder={openaiApiKeyConfigured ? '已配置；留空保持不变' : '未配置则不发送 Authorization'} onChange={(event) => setOpenaiApiKey(event.target.value)} /></div>
+                          <div className="field"><label className="label" htmlFor="cfg-openai-timeout">OpenAI timeout seconds</label><input id="cfg-openai-timeout" className="input mono" value={openaiTimeoutSeconds} onChange={(event) => setOpenaiTimeoutSeconds(event.target.value)} /></div>
+                          <div className="field"><label className="label" htmlFor="cfg-openai-clear-key">清除 OpenAI Key</label><select id="cfg-openai-clear-key" className="select" value={String(openaiClearApiKey)} onChange={(event) => setOpenaiClearApiKey(event.target.value === 'true')}><option value="false">false</option><option value="true">true</option></select></div>
+                          <div className="field"><label className="label" htmlFor="cfg-batch-size">Batch size</label><input id="cfg-batch-size" className="input mono" value={whisperxArgValue('batch_size', defaultWhisperxArgDisplay.batchSize)} onChange={(event) => setWhisperxArg('batch_size', event.target.value)} /></div>
+                          <div className="field"><label className="label" htmlFor="cfg-chunk-size">Chunk size</label><input id="cfg-chunk-size" className="input mono" value={whisperxArgValue('chunk_size', defaultWhisperxArgDisplay.chunkSize)} placeholder="远端默认" onChange={(event) => setWhisperxArg('chunk_size', event.target.value)} /></div>
+                          <div className="field"><label className="label" htmlFor="cfg-no-align">No align</label><select id="cfg-no-align" className="select" value={String(whisperxArgBooleanValue('no_align', defaultWhisperxArgDisplay.noAlign))} onChange={(event) => setWhisperxBooleanArg('no_align', event.target.value === 'true')}><option value="false">false</option><option value="true">true</option></select></div>
+                          <div className="field"><label className="label" htmlFor="cfg-align-model">Align model</label><input id="cfg-align-model" className="input" value={whisperxArgValue('align_model', defaultWhisperxArgDisplay.alignModel)} placeholder="远端自动" onChange={(event) => setWhisperxArg('align_model', event.target.value)} /></div>
+                          <div className="field field-full"><label className="label" htmlFor="cfg-diarize-model">Diarize model</label><input id="cfg-diarize-model" className="input mono" value={whisperxArgValue('diarize_model', defaultWhisperxArgDisplay.diarizeModel)} placeholder="远端默认不指定；例如 /models/pyannote-speaker-diarization-community-1" onChange={(event) => setWhisperxArg('diarize_model', event.target.value)} /></div>
+                          <div className="field"><label className="label" htmlFor="cfg-min-speakers">Min speakers</label><input id="cfg-min-speakers" className="input mono" type="number" min="1" value={whisperxArgValue('min_speakers', defaultWhisperxArgDisplay.minSpeakers)} placeholder="远端默认：自动" onChange={(event) => setWhisperxArg('min_speakers', event.target.value)} /></div>
+                          <div className="field"><label className="label" htmlFor="cfg-max-speakers">Max speakers</label><input id="cfg-max-speakers" className="input mono" type="number" min="1" value={whisperxArgValue('max_speakers', defaultWhisperxArgDisplay.maxSpeakers)} placeholder="远端默认：自动" onChange={(event) => setWhisperxArg('max_speakers', event.target.value)} /></div>
+                          <div className="field"><label className="label" htmlFor="cfg-speaker-embeddings">Speaker embeddings</label><select id="cfg-speaker-embeddings" className="select" value={String(whisperxArgBooleanValue('speaker_embeddings', defaultWhisperxArgDisplay.speakerEmbeddings))} onChange={(event) => setWhisperxBooleanArg('speaker_embeddings', event.target.value === 'true')}><option value="false">false</option><option value="true">true</option></select></div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="field field-full"><div className="status-note">本机 CLI 模式显示本进程启动 whisperx 时会用到的本地运行参数；OpenAI 接口地址和 Key 不参与本机 CLI 调用。</div></div>
+                          <div className="field"><label className="label" htmlFor="cfg-model-dir">模型缓存目录</label><input id="cfg-model-dir" className="input mono" value={modelDir} placeholder="默认不指定" onChange={(event) => setModelDir(event.target.value)} /></div>
+                          <div className="field"><label className="label" htmlFor="cfg-device">Device</label><select id="cfg-device" className="select" value={whisperxArgValue('device', defaultWhisperxArgDisplay.device)} onChange={(event) => setWhisperxArg('device', event.target.value)}><option value="">后端默认（未指定）</option><option value="cuda">cuda</option><option value="cpu">cpu</option></select></div>
+                          <div className="field"><label className="label" htmlFor="cfg-compute-type">Compute type</label><select id="cfg-compute-type" className="select" value={whisperxArgValue('compute_type', defaultWhisperxArgDisplay.computeType)} onChange={(event) => setWhisperxArg('compute_type', event.target.value)}><option value="default">default</option><option value="float16">float16</option><option value="float32">float32</option><option value="int8">int8</option></select></div>
+                          <div className="field"><label className="label" htmlFor="cfg-batch-size">Batch size</label><input id="cfg-batch-size" className="input mono" value={whisperxArgValue('batch_size', defaultWhisperxArgDisplay.batchSize)} onChange={(event) => setWhisperxArg('batch_size', event.target.value)} /></div>
+                          <div className="field"><label className="label" htmlFor="cfg-chunk-size">Chunk size</label><input id="cfg-chunk-size" className="input mono" value={whisperxArgValue('chunk_size', defaultWhisperxArgDisplay.chunkSize)} placeholder="后端默认" onChange={(event) => setWhisperxArg('chunk_size', event.target.value)} /></div>
+                          <div className="field"><label className="label" htmlFor="cfg-no-align">No align</label><select id="cfg-no-align" className="select" value={String(whisperxArgBooleanValue('no_align', defaultWhisperxArgDisplay.noAlign))} onChange={(event) => setWhisperxBooleanArg('no_align', event.target.value === 'true')}><option value="false">false</option><option value="true">true</option></select></div>
+                          <div className="field"><label className="label" htmlFor="cfg-align-model">Align model</label><input id="cfg-align-model" className="input" value={whisperxArgValue('align_model', defaultWhisperxArgDisplay.alignModel)} placeholder="后端自动" onChange={(event) => setWhisperxArg('align_model', event.target.value)} /></div>
+                          <div className="field"><label className="label" htmlFor="cfg-cache-only">仅使用本地缓存</label><select id="cfg-cache-only" className="select" value={String(modelCacheOnly)} onChange={(event) => setModelCacheOnly(event.target.value === 'true')}><option value="true">true</option><option value="false">false</option></select></div>
+                          <div className="field field-full"><label className="label" htmlFor="cfg-diarize-model">Diarize model</label><input id="cfg-diarize-model" className="input mono" value={whisperxArgValue('diarize_model', defaultWhisperxArgDisplay.diarizeModel)} placeholder="后端默认不指定；例如 /models/whisperx-cache/pyannote-speaker-diarization-community-1" onChange={(event) => setWhisperxArg('diarize_model', event.target.value)} /></div>
+                          <div className="field"><label className="label" htmlFor="cfg-min-speakers">Min speakers</label><input id="cfg-min-speakers" className="input mono" type="number" min="1" value={whisperxArgValue('min_speakers', defaultWhisperxArgDisplay.minSpeakers)} placeholder="后端默认：自动" onChange={(event) => setWhisperxArg('min_speakers', event.target.value)} /></div>
+                          <div className="field"><label className="label" htmlFor="cfg-max-speakers">Max speakers</label><input id="cfg-max-speakers" className="input mono" type="number" min="1" value={whisperxArgValue('max_speakers', defaultWhisperxArgDisplay.maxSpeakers)} placeholder="后端默认：自动" onChange={(event) => setWhisperxArg('max_speakers', event.target.value)} /></div>
+                          <div className="field"><label className="label" htmlFor="cfg-speaker-embeddings">Speaker embeddings</label><select id="cfg-speaker-embeddings" className="select" value={String(whisperxArgBooleanValue('speaker_embeddings', defaultWhisperxArgDisplay.speakerEmbeddings))} onChange={(event) => setWhisperxBooleanArg('speaker_embeddings', event.target.value === 'true')}><option value="false">false</option><option value="true">true</option></select></div>
+                          <div className="field field-full"><label className="label" htmlFor="cfg-nltk">NLTK data dir</label><input id="cfg-nltk" className="input mono" value={nltkDataDir} placeholder="未设置时跟随模型缓存目录 / nltk_data" onChange={(event) => setNltkDataDir(event.target.value)} /></div>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -793,53 +834,64 @@ export function AdminPage() {
       ) : null}
 
       <aside className={selectedJob ? 'drawer open' : 'drawer'} aria-hidden={!selectedJob}>
-        <button className="scrim" type="button" aria-label="关闭详情" onClick={() => setSelectedJob(null)} />
+        <button className="scrim" type="button" aria-label="关闭详情" onClick={closeDetail} />
         <div className="panel" role="dialog" aria-modal="true" aria-labelledby="drawer-title">
           <div className="panel-head">
             <div>
               <div className="eyebrow">任务详情弹窗</div>
               <h2 id="drawer-title">{selectedJob?.jobId ?? '—'}</h2>
-              <p className="small">查看完整元数据、错误详情、输出下载按钮、执行事件和运行日志。</p>
+              <p className="small">查看完整元数据、错误详情、输出下载按钮、任务运行日志和 CLI运行日志。</p>
             </div>
-            <button className="btn" type="button" onClick={() => setSelectedJob(null)}>
+            <button className="btn" type="button" onClick={closeDetail}>
               关闭 <span className="kbd">Esc</span>
             </button>
           </div>
           <div className="panel-body">
             {selectedJob ? (
               <>
-                <MetaList
-                  items={[
-                    { label: '完整任务 ID', value: selectedJob.jobId, mono: true },
-                    { label: '文件名', value: selectedJob.inputFilename ?? '—' },
-                    { label: '任务类型', value: taskTypeLabel(String(selectedJob.taskType)) },
-                    { label: '文件大小', value: formatBytes(selectedJob.inputSizeBytes) },
-                    { label: '状态', value: <StatusPill status={selectedJob.status} /> },
-                    { label: '更新时间', value: formatDate(selectedJob.updatedAt) },
-                    { label: '错误详情', value: selectedJob.error ?? '—' },
-                  ]}
-                />
+                <div className="job-detail-summary">
+                  <MetaList
+                    items={[
+                      { label: '完整任务 ID', value: selectedJob.jobId, mono: true },
+                      { label: '文件名', value: selectedJob.inputFilename ?? '—' },
+                      { label: '任务类型', value: taskTypeLabel(String(selectedJob.taskType)) },
+                      { label: '文件大小', value: formatBytes(selectedJob.inputSizeBytes) },
+                      { label: '状态', value: <StatusPill status={selectedJob.status} /> },
+                      { label: '更新时间', value: formatDate(selectedJob.updatedAt) },
+                      { label: '错误详情', value: selectedJob.error ?? '—' },
+                    ]}
+                  />
 
-                <ArtifactList
-                  artifacts={selectedJob.artifacts}
-                  downloadUrl={(artifact) => api.downloadUrl(selectedJob.jobId, artifact)}
-                />
+                  <ArtifactZipDownload
+                    job={selectedJob}
+                    zipUrl={(jobId) => api.artifactsZipUrl(jobId)}
+                  />
+                </div>
 
-                <Timeline
-                  rows={selectedEvents.map((event) => ({
-                    time: formatDate(event.timestamp),
-                    text: `${event.type}: ${event.message}`,
-                  }))}
-                />
-
-                <div className="preview">
-                  <div className="preview-head">
-                    <strong>运行日志</strong>
-                    <button className="btn" type="button" onClick={() => void downloadLog()}>
-                      下载日志
-                    </button>
+                <div className="job-detail-logs">
+                  <div className="preview task-run-log">
+                    <div className="preview-head">
+                      <strong>任务运行日志</strong>
+                    </div>
+                    <Timeline
+                      rows={selectedEvents.map((event) => ({
+                        time: formatDate(event.timestamp),
+                        text: `${event.type}: ${event.message}`,
+                      }))}
+                    />
                   </div>
-                  <pre className="log">{selectedLog || '暂无日志。'}</pre>
+
+                  <div className="preview cli-log-panel">
+                    <div className="preview-head">
+                      <strong>CLI运行日志</strong>
+                      <button className="btn" type="button" onClick={() => void downloadLog()}>
+                        下载日志
+                      </button>
+                    </div>
+                    <div className="cli-log-scroll" tabIndex={0} aria-label="CLI运行日志内容">
+                      <pre className="log">{selectedLog || '暂无日志。'}</pre>
+                    </div>
+                  </div>
                 </div>
               </>
             ) : null}

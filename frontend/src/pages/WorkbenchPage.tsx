@@ -2,6 +2,7 @@ import { DragEvent, ReactNode, useEffect, useRef, useState } from 'react';
 import { WhisperXApiClient, UploadableFile } from '../api/client';
 import { AppShell, PageHeader } from '../components/Shell';
 import {
+  ArtifactZipDownload,
   Box,
   MetaList,
   StatusPill,
@@ -167,42 +168,6 @@ function WhisperxPhaseModule({ job }: { job: JobStatus | null }) {
           );
         })}
       </div>
-    </div>
-  );
-}
-
-function ArtifactZipDownload({ job }: { job: JobStatus | null }) {
-  if (!job) {
-    return <div className="callout">任务成功后会在这里提供 artifacts.zip 下载。</div>;
-  }
-
-  if (job.status !== 'succeeded') {
-    return (
-      <div className="status-note">
-        当前任务状态为 <span className="mono">{job.status}</span>，成功后自动打包可下载产物。
-      </div>
-    );
-  }
-
-  if (job.artifacts.length === 0) {
-    return <div className="callout">任务已完成，但没有可下载 artifacts。</div>;
-  }
-
-  const totalBytes = job.artifacts.reduce((sum, artifact) => sum + artifact.sizeBytes, 0);
-
-  return (
-    <div className="zip-download">
-      <MetaList
-        items={[
-          { label: '文件数', value: `${job.artifacts.length} 个` },
-          { label: '总大小', value: formatBytes(totalBytes) },
-          { label: '打包名', value: `${job.jobId}-artifacts.zip`, mono: true },
-        ]}
-      />
-      <div style={{ height: 14 }} />
-      <a className="btn btn-primary" href={api.artifactsZipUrl(job.jobId)} download>
-        下载 artifacts.zip
-      </a>
     </div>
   );
 }
@@ -499,7 +464,7 @@ export function WorkbenchPage() {
             <div style={{ height: 16 }} />
 
             <Box title="Artifacts 下载" subtitle="成功后打包为单个 ZIP">
-              <ArtifactZipDownload job={job} />
+              <ArtifactZipDownload job={job} zipUrl={(jobId) => api.artifactsZipUrl(jobId)} />
             </Box>
           </div>
 

@@ -232,6 +232,22 @@ def test_job_logs_are_admin_only_with_raw_download(tmp_path):
     assert 'filename="job.log"' in download.headers["content-disposition"]
 
 
+def test_admin_inline_job_logs_return_full_log(tmp_path):
+    client, _, app = make_client(tmp_path)
+    headers = admin_headers(client)
+    job_id = upload(client)
+    long_log = "first-line\n" + ("x" * 70_000) + "\nlast-line"
+    app.state.storage.append_log(job_id, long_log)
+
+    inline = client.get(f"/api/jobs/{job_id}/logs", headers=headers)
+
+    assert inline.status_code == 200
+    log = inline.json()["log"]
+    assert log.startswith("first-line\n")
+    assert "last-line\n" in log
+    assert len(log) > 70_000
+
+
 def test_admin_can_view_job_execution_events(tmp_path):
     client, _, app = make_client(tmp_path)
     headers = admin_headers(client)

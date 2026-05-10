@@ -450,7 +450,7 @@ def job_logs(
     _: Annotated[str, Depends(require_admin)],
 ) -> dict[str, str]:
     try:
-        return {"job_id": job_id, "log": storage.read_log(job_id)}
+        return {"job_id": job_id, "log": storage.read_log(job_id, max_bytes=None)}
     except StorageError as exc:
         raise _storage_error(exc) from exc
 

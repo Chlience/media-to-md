@@ -97,7 +97,22 @@ describe('hash routing shell', () => {
     expect(within(configBox as HTMLElement).getByLabelText('Device')).toHaveValue('');
     expect(within(configBox as HTMLElement).getByLabelText('Compute type')).toHaveValue('default');
     expect(within(configBox as HTMLElement).getByLabelText('Batch size')).toHaveValue('8');
+    expect(within(configBox as HTMLElement).getByLabelText('No align')).toHaveValue('false');
     expect(within(configBox as HTMLElement).getByLabelText('仅使用本地缓存')).toHaveValue('false');
+    expect(within(configBox as HTMLElement).queryByLabelText('OpenAI Base URL')).not.toBeInTheDocument();
+    expect(within(configBox as HTMLElement).getByText(/本机 CLI 模式显示/)).toBeInTheDocument();
+    fireEvent.change(within(configBox as HTMLElement).getByLabelText('执行方式'), {
+      target: { value: 'openai' },
+    });
+    expect(within(configBox as HTMLElement).getByLabelText('OpenAI Base URL')).toBeInTheDocument();
+    expect(within(configBox as HTMLElement).getByLabelText('OpenAI API Key')).toBeInTheDocument();
+    expect(within(configBox as HTMLElement).getByLabelText('OpenAI timeout seconds')).toHaveValue('3600');
+    expect(within(configBox as HTMLElement).getByLabelText('Batch size')).toHaveValue('8');
+    expect(within(configBox as HTMLElement).getByLabelText('No align')).toHaveValue('false');
+    expect(within(configBox as HTMLElement).queryByLabelText('Device')).not.toBeInTheDocument();
+    expect(within(configBox as HTMLElement).queryByLabelText('Compute type')).not.toBeInTheDocument();
+    expect(within(configBox as HTMLElement).queryByLabelText('仅使用本地缓存')).not.toBeInTheDocument();
+    expect(within(configBox as HTMLElement).getByText(/OpenAI 模式只显示接口配置/)).toBeInTheDocument();
     expect(configBox).toContainElement(screen.getByRole('button', { name: '保存 config' }));
     expect(configBox?.textContent).not.toContain('读取 /admin/config · 保存 /admin/config · 展示当前生效参数');
     expect(screen.queryByLabelText('WhisperX args JSON')).not.toBeInTheDocument();
@@ -154,6 +169,98 @@ describe('hash routing shell', () => {
     expect(within(dialog).getByLabelText('当前密码')).toBeInTheDocument();
     expect(within(dialog).getByLabelText('新密码')).toBeInTheDocument();
     await waitFor(() => expect(fetch).toHaveBeenCalled());
+  });
+
+  it('closes the task detail drawer with Escape after showing the full inline log', async () => {
+    window.localStorage.setItem('whisperx_admin_token', 'token');
+    window.localStorage.setItem('whisperx_admin_username', 'admin');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith('/jobs')) {
+          return new Response(
+            JSON.stringify({
+              jobs: [
+                {
+                  job_id: 'job-esc',
+                  status: 'succeeded',
+                  task_type: 'whisperx',
+                  input_filename: 'sample.wav',
+                  input_size_bytes: 3,
+                  updated_at: '2026-05-10T00:00:00Z',
+                  options: { task_type: 'whisperx', model: 'small', language: 'auto' },
+                  artifacts: [
+                    {
+                      name: 'result.txt',
+                      format: 'txt',
+                      size_bytes: 32,
+                      path: 'output/result.txt',
+                      download_url: null,
+                    },
+                  ],
+                },
+              ],
+            }),
+            { headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        if (url.endsWith('/admin/config')) {
+          return new Response(
+            JSON.stringify({
+              api_base_url: 'http://localhost:8000/api',
+              whisperx_model: 'small',
+              whisperx_model_dir: null,
+              whisperx_backend: 'cli',
+              whisperx_openai_base_url: null,
+              whisperx_openai_api_key_configured: false,
+              whisperx_openai_timeout_seconds: 3600,
+              model_cache_only: false,
+              nltk_data_dir: null,
+              whisperx_args: [],
+              whisperx_args_config: {},
+              opendataloader_pdf_args: [],
+              opendataloader_pdf_args_config: {},
+            }),
+            { headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        if (url.endsWith('/jobs/job-esc/events')) {
+          return new Response(JSON.stringify({ events: [] }), {
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (url.endsWith('/jobs/job-esc/logs')) {
+          return new Response(
+            JSON.stringify({ job_id: 'job-esc', log: 'first log line\nlast log line\n' }),
+            { headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        return new Response('{}', { headers: { 'Content-Type': 'application/json' } });
+      }),
+    );
+
+    window.location.hash = '#/admin';
+    render(<App />);
+
+    expect(await screen.findByText('sample.wav')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '详情' }));
+
+    expect(await screen.findByRole('dialog', { name: 'job-esc' })).toBeInTheDocument();
+    const zipLink = screen.getByRole('link', { name: '下载 artifacts.zip' });
+    expect(zipLink).toHaveAttribute('href', 'http://localhost:8000/api/jobs/job-esc/artifacts.zip');
+    expect(screen.queryByText('result.txt')).not.toBeInTheDocument();
+    expect(screen.getByText('任务运行日志')).toBeInTheDocument();
+    expect(screen.getByText('CLI运行日志')).toBeInTheDocument();
+    expect(screen.getByText(/first log line/)).toBeInTheDocument();
+    expect(screen.getByText(/last log line/)).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'job-esc' })).not.toBeInTheDocument(),
+    );
+    expect(screen.queryByText(/last log line/)).not.toBeInTheDocument();
   });
 
   it('maps only #/admin to the admin route', () => {

@@ -218,10 +218,12 @@ class JobStorage:
             if line:
                 self.append_event(job_id, "log", line, status=manifest.status)
 
-    def read_log(self, job_id: str, max_bytes: int = 65536) -> str:
+    def read_log(self, job_id: str, max_bytes: int | None = 65536) -> str:
         log_path = self.log_file(job_id)
         if not log_path.exists():
             return ""
+        if max_bytes is None:
+            return log_path.read_text(encoding="utf-8", errors="replace")
         with log_path.open("rb") as fh:
             data = fh.read(max_bytes + 1)
         if len(data) > max_bytes:
