@@ -7,8 +7,8 @@
 后端负责：
 
 - 保存上传文件到 backend-owned 任务目录。
-- 为 WhisperX 和 PDF 任务构造安全的 argv 列表，不通过 shell 拼接命令。
-- 调用本机 `whisperx` 与 `opendataloader-pdf`。
+- 为 WhisperX CLI 和 PDF 任务构造安全的 argv 列表，不通过 shell 拼接命令。
+- 调用本机 `whisperx` 与 `opendataloader-pdf`，或在 OpenAI 兼容模式下调用远端 WhisperX HTTP 服务。
 - 发现并登记 manifest 中允许下载的 artifacts。
 - 保存 `logs/job.log` 和 `logs/events.jsonl`。
 - 提供公开任务状态/结果 API 和管理员 API。
@@ -21,7 +21,7 @@
 
 ## 安装外部 CLI
 
-后端任务直接调用本机 `whisperx` 和 `opendataloader-pdf`，不会在任务运行时临时安装外部包。建议用独立的 `uv tool` 安装外部命令：
+默认后端任务直接调用本机 `whisperx` 和 `opendataloader-pdf`，不会在任务运行时临时安装外部包。若音视频转写使用 `whisperx_backend=openai`，则只调用已启动的 WhisperX OpenAI 兼容服务。CLI 模式建议用独立的 `uv tool` 安装外部命令：
 
 ```bash
 uv tool install --python 3.12 whisperx
@@ -87,12 +87,18 @@ ffmpeg -version
 | `WHISPERX_MODEL` / `WHISPERX_MODEL_DIR` | 覆盖默认模型与模型缓存目录。 |
 | `WHISPERX_MODEL_CACHE_ONLY` | 覆盖是否只使用本地模型缓存。 |
 | `WHISPERX_ARGS_JSON` | 覆盖 `whisperx_args`。 |
+| `WHISPERX_BACKEND` | 音视频转写执行方式：`cli` 或 `openai`。 |
+| `WHISPERX_OPENAI_BASE_URL` | OpenAI 兼容 WhisperX 服务地址，如 `http://localhost:9000/v1`。 |
+| `WHISPERX_OPENAI_API_KEY` | 调用 OpenAI 兼容服务时发送的 Bearer Key。 |
+| `WHISPERX_OPENAI_TIMEOUT_SECONDS` | OpenAI 兼容服务请求超时时间。 |
 | `OPENDATALOADER_PDF_ARGS_JSON` | 覆盖 `opendataloader_pdf_args`。 |
 | `WHISPERX_ADMIN_USERNAME` / `WHISPERX_ADMIN_PASSWORD` | 覆盖管理员账号。 |
 
+`MEDIA_TO_MD_API_BASE_URL` 同时会作为前端启动/构建时变量使用；修改后需要重启前端 dev server，生产包需要重新构建。若浏览器保存过旧地址，可在管理页先应用 API 地址到本浏览器，或清理 localStorage 的 `media_to_md_api_base_url`。
+
 ### 允许的 WhisperX 参数
 
-`batch_size`, `device`, `device_index`, `compute_type`, `threads`, `chunk_size`, `vad_method`, `vad_onset`, `vad_offset`, `align_model`, `diarize_model`, `min_speakers`, `max_speakers`, `speaker_embeddings`
+`batch_size`, `device`, `device_index`, `compute_type`, `threads`, `chunk_size`, `vad_method`, `vad_onset`, `vad_offset`, `align_model`, `diarize_model`, `min_speakers`, `max_speakers`, `speaker_embeddings`, `no_align`
 
 这些参数会转换为对应的 WhisperX CLI flag，例如：
 
@@ -103,6 +109,11 @@ ffmpeg -version
   "device": "cuda"
 }
 ```
+
+
+### WhisperX OpenAI 兼容模式
+
+设置 `whisperx_backend = "openai"` 后，音视频任务会调用 `whisperx_openai_base_url` 对应的 `/v1/audio/transcriptions`，并把返回的 `verbose_json` 转成原有的 `result.txt`、`result.srt`、`result.vtt` 和 `result.json` artifacts。详见 `docs/whisperx-openai-backend.md`。
 
 ### 允许的 PDF 参数
 

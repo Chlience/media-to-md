@@ -19,6 +19,10 @@ def test_config_defaults_direct_cli_runtime(monkeypatch, tmp_path):
     monkeypatch.delenv("NLTK_DATA", raising=False)
     monkeypatch.delenv("WHISPERX_ARGS_JSON", raising=False)
     monkeypatch.delenv("MEDIA_TO_MD_API_BASE_URL", raising=False)
+    monkeypatch.delenv("WHISPERX_BACKEND", raising=False)
+    monkeypatch.delenv("WHISPERX_OPENAI_BASE_URL", raising=False)
+    monkeypatch.delenv("WHISPERX_OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("WHISPERX_OPENAI_TIMEOUT_SECONDS", raising=False)
     monkeypatch.delenv("WHISPERX_ADMIN_USERNAME", raising=False)
     monkeypatch.delenv("WHISPERX_ADMIN_PASSWORD", raising=False)
 
@@ -26,6 +30,10 @@ def test_config_defaults_direct_cli_runtime(monkeypatch, tmp_path):
 
     assert settings.whisperx_model == "small"
     assert settings.whisperx_model_dir == "/models"
+    assert settings.whisperx_backend == "cli"
+    assert settings.whisperx_openai_base_url is None
+    assert settings.whisperx_openai_api_key is None
+    assert settings.whisperx_openai_timeout_seconds == 3600.0
     assert settings.nltk_data_dir == "/models/nltk_data"
     assert settings.whisperx_args == ()
     assert settings.api_base_url is None
@@ -47,6 +55,10 @@ def test_backend_config_json_is_loaded_and_env_can_override(monkeypatch, tmp_pat
   "data_root": "configured-data",
   "whisperx_model": "/models-from-json/faster-whisper-large-v2",
   "api_base_url": "http://localhost:8000/api",
+  "whisperx_backend": "openai",
+  "whisperx_openai_base_url": "http://localhost:9000/v1",
+  "whisperx_openai_api_key": "json-key",
+  "whisperx_openai_timeout_seconds": 120,
   "whisperx_model_dir": "/models-from-json",
   "nltk_data_dir": "configured-nltk",
   "model_cache_only": true,
@@ -76,6 +88,10 @@ def test_backend_config_json_is_loaded_and_env_can_override(monkeypatch, tmp_pat
     monkeypatch.delenv("WHISPERX_MODEL_CACHE_ONLY", raising=False)
     monkeypatch.delenv("WHISPERX_ARGS_JSON", raising=False)
     monkeypatch.delenv("MEDIA_TO_MD_API_BASE_URL", raising=False)
+    monkeypatch.delenv("WHISPERX_BACKEND", raising=False)
+    monkeypatch.delenv("WHISPERX_OPENAI_BASE_URL", raising=False)
+    monkeypatch.delenv("WHISPERX_OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("WHISPERX_OPENAI_TIMEOUT_SECONDS", raising=False)
     monkeypatch.delenv("WHISPERX_ADMIN_USERNAME", raising=False)
     monkeypatch.delenv("WHISPERX_ADMIN_PASSWORD", raising=False)
 
@@ -84,6 +100,10 @@ def test_backend_config_json_is_loaded_and_env_can_override(monkeypatch, tmp_pat
     assert settings.data_root == (tmp_path / "configured-data").resolve()
     assert settings.whisperx_model == "/models-from-json/faster-whisper-large-v2"
     assert settings.whisperx_model_dir == "/models-from-json"
+    assert settings.whisperx_backend == "openai"
+    assert settings.whisperx_openai_base_url == "http://localhost:9000/v1"
+    assert settings.whisperx_openai_api_key == "json-key"
+    assert settings.whisperx_openai_timeout_seconds == 120.0
     assert settings.api_base_url == "http://localhost:8000/api"
     assert settings.nltk_data_dir == str((tmp_path / "configured-nltk").resolve())
     assert settings.model_cache_only is True
@@ -121,6 +141,10 @@ def test_backend_config_json_is_loaded_and_env_can_override(monkeypatch, tmp_pat
     monkeypatch.setenv("WHISPERX_NLTK_DATA_DIR", "/nltk-from-env")
     monkeypatch.setenv("WHISPERX_MODEL_CACHE_ONLY", "false")
     monkeypatch.setenv("MEDIA_TO_MD_API_BASE_URL", "http://127.0.0.1:9000/api")
+    monkeypatch.setenv("WHISPERX_BACKEND", "api")
+    monkeypatch.setenv("WHISPERX_OPENAI_BASE_URL", "http://127.0.0.1:9100/v1")
+    monkeypatch.setenv("WHISPERX_OPENAI_API_KEY", "env-key")
+    monkeypatch.setenv("WHISPERX_OPENAI_TIMEOUT_SECONDS", "240")
     monkeypatch.setenv(
         "WHISPERX_ARGS_JSON", '{"batch_size": 4, "compute_type": "float16"}'
     )
@@ -133,6 +157,10 @@ def test_backend_config_json_is_loaded_and_env_can_override(monkeypatch, tmp_pat
     overridden = get_settings()
     assert overridden.whisperx_model == "/models-from-env/faster-whisper-large-v2"
     assert overridden.whisperx_model_dir == "/models-from-env"
+    assert overridden.whisperx_backend == "openai"
+    assert overridden.whisperx_openai_base_url == "http://127.0.0.1:9100/v1"
+    assert overridden.whisperx_openai_api_key == "env-key"
+    assert overridden.whisperx_openai_timeout_seconds == 240.0
     assert overridden.api_base_url == "http://127.0.0.1:9000/api"
     assert overridden.nltk_data_dir == "/nltk-from-env"
     assert overridden.model_cache_only is False
@@ -180,6 +208,7 @@ def test_whisperx_args_are_allowlisted_and_normalized():
             "min_speakers": "1",
             "max_speakers": 4,
             "speaker_embeddings": True,
+            "no_align": True,
         }
     ) == (
         "--batch_size",
@@ -197,6 +226,7 @@ def test_whisperx_args_are_allowlisted_and_normalized():
         "--max_speakers",
         "4",
         "--speaker_embeddings",
+        "--no_align",
     )
 
     with pytest.raises(ValueError, match="Unsupported whisperx_args key"):

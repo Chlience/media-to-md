@@ -20,6 +20,7 @@ import {
   taskTypeLabel,
   taskTypePdf,
   taskTypeWhisperx,
+  WhisperxBackend,
 } from '../types/api';
 import { normalizeApiBaseUrl, readApiBaseUrl, saveApiBaseUrl } from '../services/apiBaseUrl';
 
@@ -33,6 +34,8 @@ const taskTypeViews = [
 const pageSize = 10;
 const defaultWhisperxModel = 'small';
 const defaultModelCacheOnly = false;
+const defaultWhisperxBackend: WhisperxBackend = 'cli';
+const defaultOpenaiTimeoutSeconds = '3600';
 const defaultWhisperxArgDisplay = {
   device: '',
   computeType: 'default',
@@ -95,6 +98,12 @@ export function AdminPage() {
   const [apiBaseUrl, setApiBaseUrl] = useState(() => readApiBaseUrl());
   const [model, setModel] = useState(defaultWhisperxModel);
   const [modelDir, setModelDir] = useState('');
+  const [whisperxBackend, setWhisperxBackend] = useState<WhisperxBackend>(defaultWhisperxBackend);
+  const [openaiBaseUrl, setOpenaiBaseUrl] = useState('');
+  const [openaiApiKey, setOpenaiApiKey] = useState('');
+  const [openaiApiKeyConfigured, setOpenaiApiKeyConfigured] = useState(false);
+  const [openaiClearApiKey, setOpenaiClearApiKey] = useState(false);
+  const [openaiTimeoutSeconds, setOpenaiTimeoutSeconds] = useState(defaultOpenaiTimeoutSeconds);
   const [nltkDataDir, setNltkDataDir] = useState('');
   const [modelCacheOnly, setModelCacheOnly] = useState(defaultModelCacheOnly);
   const [whisperxArgs, setWhisperxArgs] = useState('{}');
@@ -147,6 +156,12 @@ export function AdminPage() {
     setApiBaseUrl(normalizeApiBaseUrl(nextConfig.apiBaseUrl ?? readApiBaseUrl()));
     setModel(nextConfig.model);
     setModelDir(nextConfig.modelDir ?? '');
+    setWhisperxBackend(nextConfig.whisperxBackend);
+    setOpenaiBaseUrl(nextConfig.whisperxOpenaiBaseUrl ?? '');
+    setOpenaiApiKey('');
+    setOpenaiApiKeyConfigured(nextConfig.whisperxOpenaiApiKeyConfigured);
+    setOpenaiClearApiKey(false);
+    setOpenaiTimeoutSeconds(String(nextConfig.whisperxOpenaiTimeoutSeconds || 3600));
     setNltkDataDir(nextConfig.nltkDataDir ?? '');
     setModelCacheOnly(nextConfig.modelCacheOnly);
     setWhisperxArgs(jsonPreview(nextConfig.whisperxArgsConfig));
@@ -163,6 +178,14 @@ export function AdminPage() {
     }
   };
 
+  const applyBrowserApiBaseUrl = (): string => {
+    const normalized = saveApiBaseUrl(apiBaseUrl);
+    api.setBaseUrl(normalized);
+    setApiBaseUrl(normalized);
+    setError(null);
+    return normalized;
+  };
+
   useEffect(() => {
     if (!token) return;
     void refresh(token);
@@ -175,6 +198,7 @@ export function AdminPage() {
     setBusy(true);
     setError(null);
     try {
+      applyBrowserApiBaseUrl();
       const session = await api.loginAdmin({ username: username || 'admin', password });
       sessionStore.save(session);
       setToken(session.accessToken);
@@ -259,12 +283,21 @@ export function AdminPage() {
     setBusy(true);
     setError(null);
     try {
-      const apiBaseUrlForSave = normalizeApiBaseUrl(apiBaseUrl);
+      const apiBaseUrlForSave = applyBrowserApiBaseUrl();
+      const parsedOpenaiTimeoutSeconds = Number(openaiTimeoutSeconds || defaultOpenaiTimeoutSeconds);
+      if (!Number.isFinite(parsedOpenaiTimeoutSeconds) || parsedOpenaiTimeoutSeconds <= 0) {
+        throw new Error('OpenAI timeout seconds 必须是大于 0 的数字。');
+      }
       const nextConfig = await api.updateConfig({
         adminToken: token,
         apiBaseUrl: apiBaseUrlForSave,
         model,
         modelDir,
+        whisperxBackend,
+        whisperxOpenaiBaseUrl: openaiBaseUrl,
+        whisperxOpenaiApiKey: openaiApiKey,
+        whisperxOpenaiClearApiKey: openaiClearApiKey,
+        whisperxOpenaiTimeoutSeconds: parsedOpenaiTimeoutSeconds,
         modelCacheOnly,
         nltkDataDir,
         whisperxArgs: parseJsonObject(whisperxArgs),
@@ -273,6 +306,12 @@ export function AdminPage() {
       const normalizedApiBaseUrl = saveApiBaseUrl(nextConfig.apiBaseUrl ?? apiBaseUrlForSave);
       setApiBaseUrl(normalizedApiBaseUrl);
       setConfig(nextConfig);
+      setWhisperxBackend(nextConfig.whisperxBackend);
+      setOpenaiBaseUrl(nextConfig.whisperxOpenaiBaseUrl ?? '');
+      setOpenaiApiKey('');
+      setOpenaiApiKeyConfigured(nextConfig.whisperxOpenaiApiKeyConfigured);
+      setOpenaiClearApiKey(false);
+      setOpenaiTimeoutSeconds(String(nextConfig.whisperxOpenaiTimeoutSeconds || 3600));
       setWhisperxArgs(jsonPreview(nextConfig.whisperxArgsConfig));
       setPdfArgs(jsonPreview(nextConfig.pdfArgsConfig));
     } catch (nextError) {
@@ -450,9 +489,14 @@ export function AdminPage() {
             <Box
               title="后端运行配置"
               actions={
-                <button className="btn btn-primary" type="button" onClick={() => void saveConfig()} disabled={!signedIn || busy}>
-                  保存 config
-                </button>
+                <>
+                  <button className="btn" type="button" onClick={applyBrowserApiBaseUrl} disabled={busy}>
+                    应用 API 地址到本浏览器
+                  </button>
+                  <button className="btn btn-primary" type="button" onClick={() => void saveConfig()} disabled={!signedIn || busy}>
+                    保存 config
+                  </button>
+                </>
               }
             >
               <div className="form-grid">
@@ -467,8 +511,13 @@ export function AdminPage() {
                   <h3>WhisperX</h3>
                   <div className="config-inner">
                     <div className="form-grid">
+                      <div className="field"><label className="label" htmlFor="cfg-whisperx-backend">执行方式</label><select id="cfg-whisperx-backend" className="select" value={whisperxBackend} onChange={(event) => setWhisperxBackend(event.target.value as WhisperxBackend)}><option value="cli">本机 CLI</option><option value="openai">OpenAI 兼容接口</option></select></div>
                       <div className="field"><label className="label" htmlFor="cfg-model">默认模型</label><input id="cfg-model" className="input" value={model} placeholder={defaultWhisperxModel} onChange={(event) => setModel(event.target.value)} /></div>
-                      <div className="field"><label className="label" htmlFor="cfg-model-dir">模型缓存目录</label><input id="cfg-model-dir" className="input mono" value={modelDir} placeholder="默认不指定" onChange={(event) => setModelDir(event.target.value)} /></div>
+                      <div className="field"><label className="label" htmlFor="cfg-model-dir">模型缓存目录</label><input id="cfg-model-dir" className="input mono" value={modelDir} placeholder="CLI 模式使用；OpenAI 模式由远端服务控制" onChange={(event) => setModelDir(event.target.value)} /></div>
+                      <div className="field"><label className="label" htmlFor="cfg-openai-base-url">OpenAI Base URL</label><input id="cfg-openai-base-url" className="input mono" value={openaiBaseUrl} placeholder="http://localhost:8000/v1" onChange={(event) => setOpenaiBaseUrl(event.target.value)} /></div>
+                      <div className="field"><label className="label" htmlFor="cfg-openai-api-key">OpenAI API Key</label><input id="cfg-openai-api-key" className="input mono" type="password" value={openaiApiKey} placeholder={openaiApiKeyConfigured ? '已配置；留空保持不变' : '未配置则不发送 Authorization'} onChange={(event) => setOpenaiApiKey(event.target.value)} /></div>
+                      <div className="field"><label className="label" htmlFor="cfg-openai-timeout">OpenAI timeout seconds</label><input id="cfg-openai-timeout" className="input mono" value={openaiTimeoutSeconds} onChange={(event) => setOpenaiTimeoutSeconds(event.target.value)} /></div>
+                      <div className="field"><label className="label" htmlFor="cfg-openai-clear-key">清除 OpenAI Key</label><select id="cfg-openai-clear-key" className="select" value={String(openaiClearApiKey)} onChange={(event) => setOpenaiClearApiKey(event.target.value === 'true')}><option value="false">false</option><option value="true">true</option></select></div>
                       <div className="field"><label className="label" htmlFor="cfg-device">Device</label><select id="cfg-device" className="select" value={whisperxArgValue('device', defaultWhisperxArgDisplay.device)} onChange={(event) => setWhisperxArg('device', event.target.value)}><option value="">后端默认（未指定）</option><option value="cuda">cuda</option><option value="cpu">cpu</option></select></div>
                       <div className="field"><label className="label" htmlFor="cfg-compute-type">Compute type</label><select id="cfg-compute-type" className="select" value={whisperxArgValue('compute_type', defaultWhisperxArgDisplay.computeType)} onChange={(event) => setWhisperxArg('compute_type', event.target.value)}><option value="default">default</option><option value="float16">float16</option><option value="float32">float32</option><option value="int8">int8</option></select></div>
                       <div className="field"><label className="label" htmlFor="cfg-batch-size">Batch size</label><input id="cfg-batch-size" className="input mono" value={whisperxArgValue('batch_size', defaultWhisperxArgDisplay.batchSize)} onChange={(event) => setWhisperxArg('batch_size', event.target.value)} /></div>

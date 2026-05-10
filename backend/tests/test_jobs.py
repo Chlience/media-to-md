@@ -9,6 +9,7 @@ from app.jobs import JobRunnerDispatcher, JobService, build_job_runner
 from app.models import JobOptions
 from app.opendataloader_pdf_runner import JobStorageOpenDataLoaderPdfRunner
 from app.storage import JobStorage
+from app.whisperx_openai_runner import JobStorageOpenAIWhisperXRunner
 from app.whisperx_runner import JobStorageWhisperXRunner
 
 
@@ -37,6 +38,22 @@ def test_build_job_runner_dispatcher_contains_whisperx_and_pdf(tmp_path):
     assert isinstance(dispatcher.runners["whisperx"], JobStorageWhisperXRunner)
     assert isinstance(dispatcher.runners["pdf"], JobStorageOpenDataLoaderPdfRunner)
 
+
+
+
+def test_build_job_runner_uses_openai_runner_when_configured(tmp_path):
+    class Settings:
+        whisperx_backend = "openai"
+        whisperx_openai_base_url = "http://localhost:9000/v1"
+        whisperx_openai_api_key = "test-key"
+        whisperx_openai_timeout_seconds = 120
+        whisperx_model = "large-v2"
+        whisperx_args_config = {"batch_size": 4}
+
+    dispatcher = build_job_runner(JobStorage(tmp_path), Settings())
+
+    assert isinstance(dispatcher.runners["whisperx"], JobStorageOpenAIWhisperXRunner)
+    assert dispatcher.runners["whisperx"].config.base_url == "http://localhost:9000/v1"
 
 def test_dispatcher_routes_by_manifest_task_type(tmp_path):
     storage = JobStorage(tmp_path)

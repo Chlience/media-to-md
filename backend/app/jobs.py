@@ -83,12 +83,20 @@ def build_job_runner(storage: JobStorage, settings) -> JobRunnerDispatcher:
     """Build the task-type dispatcher used by the API job service."""
 
     from .opendataloader_pdf_runner import JobStorageOpenDataLoaderPdfRunner
+    from .whisperx_openai_runner import JobStorageOpenAIWhisperXRunner
     from .whisperx_runner import JobStorageWhisperXRunner
+
+    whisperx_backend = getattr(settings, "whisperx_backend", "cli")
+    whisperx_runner = (
+        JobStorageOpenAIWhisperXRunner.from_settings(storage, settings)
+        if whisperx_backend == "openai"
+        else JobStorageWhisperXRunner.from_settings(storage, settings)
+    )
 
     return JobRunnerDispatcher(
         storage,
         {
-            "whisperx": JobStorageWhisperXRunner.from_settings(storage, settings),
+            "whisperx": whisperx_runner,
             "pdf": JobStorageOpenDataLoaderPdfRunner.from_settings(storage, settings),
         },
     )

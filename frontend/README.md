@@ -30,13 +30,19 @@ npm run typecheck
 
 ## API 地址
 
-前端只读取 `MEDIA_TO_MD_API_BASE_URL`。未设置时默认使用：
+前端启动/构建时读取 `MEDIA_TO_MD_API_BASE_URL`。未设置时默认使用：
 
 ```text
 http://localhost:8000/api
 ```
 
-管理员也可以在 `/#/admin` 的“后端运行配置”中保存 API Base URL；浏览器本地会同步保存该地址，后端也会写入 `backend/config.json`。
+注意：
+
+- 修改环境变量后需要重启 Vite dev server；生产包需要重新 `npm run build`。
+- 如果写 `.env` 文件，应放在 `frontend/.env`，或在启动命令前显式导出变量。
+- 浏览器本地也会保存 API 地址；管理页“后端运行配置”中可先点击“应用 API 地址到本浏览器”，再登录或保存后端 config。
+
+管理员也可以在 `/#/admin` 的“后端运行配置”中保存 API Base URL；保存 config 时后端会写入 `backend/config.json`。
 
 ## 页面行为
 

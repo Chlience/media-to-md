@@ -1,6 +1,6 @@
-# 直接 CLI Runner 契约
+# Runner 契约
 
-后端运行任务时直接调用本机命令，不通过 shell 拼接字符串，也不会在任务运行时临时安装包。部署者需要提前安装并验证命令在 `PATH` 中。
+后端默认运行任务时直接调用本机命令，不通过 shell 拼接字符串，也不会在任务运行时临时安装包。音视频转写也可以切换到 OpenAI 兼容 HTTP runner；PDF 任务仍是直接 CLI。
 
 ## 安装建议
 
@@ -44,9 +44,9 @@ ffmpeg -version
 java -version
 ```
 
-## WhisperX
+## WhisperX CLI 模式
 
-后端构造的核心形式：
+`whisperx_backend=cli` 时，后端构造的核心形式：
 
 ```bash
 whisperx <input-media> \
@@ -61,7 +61,23 @@ whisperx <input-media> \
 
 允许的 `whisperx_args`：
 
-`batch_size`, `device`, `device_index`, `compute_type`, `threads`, `chunk_size`, `vad_method`, `vad_onset`, `vad_offset`, `align_model`, `diarize_model`, `min_speakers`, `max_speakers`, `speaker_embeddings`
+`batch_size`, `device`, `device_index`, `compute_type`, `threads`, `chunk_size`, `vad_method`, `vad_onset`, `vad_offset`, `align_model`, `diarize_model`, `min_speakers`, `max_speakers`, `speaker_embeddings`, `no_align`
+
+## WhisperX OpenAI 兼容模式
+
+`whisperx_backend=openai` 时，后端不启动 `whisperx` 子进程，而是向 `whisperx_openai_base_url` 发起 multipart 请求：
+
+```text
+POST <base>/v1/audio/transcriptions
+file=<uploaded-media>
+model=<job-model>
+response_format=verbose_json
+timestamp_granularities[]=segment
+```
+
+返回的 `verbose_json` 会被写成 `result.json`，并派生出 `result.txt`、`result.srt`、`result.vtt`。
+
+OpenAI 模式只转发适合每次请求覆盖的 `whisperx_args`：`batch_size`, `chunk_size`, `no_align`, `align_model`, `diarize_model`, `min_speakers`, `max_speakers`, `speaker_embeddings`。设备、模型目录、compute type 等由远端 WhisperX 服务启动参数控制。
 
 ## OpenDataLoader PDF
 

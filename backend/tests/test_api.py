@@ -13,6 +13,7 @@ from app.jobs import JobRunnerDispatcher
 from app.main import create_app
 from app.models import Artifact, JobOptions, JobStatus
 from app.opendataloader_pdf_runner import JobStorageOpenDataLoaderPdfRunner
+from app.whisperx_openai_runner import JobStorageOpenAIWhisperXRunner
 from app.whisperx_runner import JobStorageWhisperXRunner
 
 
@@ -94,6 +95,10 @@ def test_upload_status_config_reconstruct_from_filesystem(tmp_path):
         "api_base_url": None,
         "whisperx_model": "/models/faster-whisper-large-v2",
         "whisperx_model_dir": "/models",
+        "whisperx_backend": "cli",
+        "whisperx_openai_base_url": None,
+        "whisperx_openai_api_key_configured": False,
+        "whisperx_openai_timeout_seconds": 3600.0,
         "model_cache_only": True,
         "nltk_data_dir": "/models/nltk_data",
         "whisperx_args": [],
@@ -357,6 +362,10 @@ def test_admin_can_update_backend_config(monkeypatch, tmp_path):
     monkeypatch.delenv("NLTK_DATA", raising=False)
     monkeypatch.delenv("WHISPERX_MODEL_CACHE_ONLY", raising=False)
     monkeypatch.delenv("WHISPERX_ARGS_JSON", raising=False)
+    monkeypatch.delenv("WHISPERX_BACKEND", raising=False)
+    monkeypatch.delenv("WHISPERX_OPENAI_BASE_URL", raising=False)
+    monkeypatch.delenv("WHISPERX_OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("WHISPERX_OPENAI_TIMEOUT_SECONDS", raising=False)
     monkeypatch.delenv("WHISPERX_ADMIN_USERNAME", raising=False)
     monkeypatch.delenv("WHISPERX_ADMIN_PASSWORD", raising=False)
     client = TestClient(create_app())
@@ -369,6 +378,10 @@ def test_admin_can_update_backend_config(monkeypatch, tmp_path):
             "whisperx_model": "/models/faster-whisper-large-v2",
             "api_base_url": "http://localhost:8000/api",
             "whisperx_model_dir": "/models",
+            "whisperx_backend": "openai",
+            "whisperx_openai_base_url": "http://localhost:9000/v1",
+            "whisperx_openai_api_key": "test-key",
+            "whisperx_openai_timeout_seconds": 180,
             "nltk_data_dir": "/models/nltk",
             "model_cache_only": True,
             "whisperx_args": {
@@ -387,6 +400,10 @@ def test_admin_can_update_backend_config(monkeypatch, tmp_path):
         "api_base_url": "http://localhost:8000/api",
         "whisperx_model": "/models/faster-whisper-large-v2",
         "whisperx_model_dir": "/models",
+        "whisperx_backend": "openai",
+        "whisperx_openai_base_url": "http://localhost:9000/v1",
+        "whisperx_openai_api_key_configured": True,
+        "whisperx_openai_timeout_seconds": 180.0,
         "model_cache_only": True,
         "nltk_data_dir": "/models/nltk",
         "whisperx_args": [
@@ -427,6 +444,8 @@ def test_admin_can_update_backend_config(monkeypatch, tmp_path):
     assert '"api_base_url": "http://localhost:8000/api"' in saved
     assert '"batch_size": 12' in saved
     assert '"diarize_model": "/models/pyannote"' in saved
+    assert '"whisperx_backend": "openai"' in saved
+    assert '"whisperx_openai_api_key": "test-key"' in saved
     assert data_root.exists()
 
     upload_response = client.post(
@@ -443,8 +462,9 @@ def test_admin_can_update_backend_config(monkeypatch, tmp_path):
     runner = client.app.state.job_service.runner
     assert isinstance(runner, JobRunnerDispatcher)
     whisperx_runner = runner.runners["whisperx"]
-    assert isinstance(whisperx_runner, JobStorageWhisperXRunner)
+    assert isinstance(whisperx_runner, JobStorageOpenAIWhisperXRunner)
     assert whisperx_runner.config.default_model == "/models/faster-whisper-large-v2"
+    assert whisperx_runner.config.base_url == "http://localhost:9000/v1"
 
 
 def test_admin_config_update_requires_login(tmp_path):

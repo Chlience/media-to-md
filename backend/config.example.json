@@ -1,6 +1,10 @@
 {
   "data_root": ".data/media-to-md",
   "api_base_url": "http://localhost:8000/api",
+  "whisperx_backend": "cli",
+  "whisperx_openai_base_url": "http://localhost:9000/v1",
+  "whisperx_openai_api_key": null,
+  "whisperx_openai_timeout_seconds": 3600,
   "whisperx_model": "small",
   "whisperx_model_dir": ".data/models",
   "nltk_data_dir": ".data/models/nltk_data",

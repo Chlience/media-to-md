@@ -100,6 +100,11 @@ export class WhisperXApiClient {
     adminToken: string;
     model: string;
     modelDir?: string | null;
+    whisperxBackend?: 'cli' | 'openai';
+    whisperxOpenaiBaseUrl?: string | null;
+    whisperxOpenaiApiKey?: string | null;
+    whisperxOpenaiClearApiKey?: boolean;
+    whisperxOpenaiTimeoutSeconds?: number;
     modelCacheOnly: boolean;
     nltkDataDir?: string | null;
     apiBaseUrl?: string | null;
@@ -113,6 +118,11 @@ export class WhisperXApiClient {
         api_base_url: blankToNull(params.apiBaseUrl),
         whisperx_model: params.model.trim(),
         whisperx_model_dir: blankToNull(params.modelDir),
+        whisperx_backend: params.whisperxBackend ?? 'cli',
+        whisperx_openai_base_url: blankToNull(params.whisperxOpenaiBaseUrl),
+        whisperx_openai_api_key: blankToNull(params.whisperxOpenaiApiKey),
+        whisperx_openai_clear_api_key: params.whisperxOpenaiClearApiKey ?? false,
+        whisperx_openai_timeout_seconds: params.whisperxOpenaiTimeoutSeconds ?? 3600,
         model_cache_only: params.modelCacheOnly,
         nltk_data_dir: blankToNull(params.nltkDataDir),
         whisperx_args: params.whisperxArgs,

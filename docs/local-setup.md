@@ -7,7 +7,7 @@
 - Node.js 与 npm
 - Java 11+ 运行时或 JDK（PDF 必需）
 - ffmpeg（WhisperX 读取音视频常用）
-- 本机可执行命令：`whisperx`、`opendataloader-pdf`
+- 本机可执行命令：`opendataloader-pdf`；如果音视频使用默认 CLI 模式，还需要 `whisperx`
 
 ## 安装 WhisperX 与 OpenDataLoader PDF
 
@@ -58,7 +58,7 @@ whisperx --help
 opendataloader-pdf --help
 ```
 
-后端进程必须也能看到这些命令。最小运行时检查是：
+CLI 模式下后端进程必须也能看到这些命令。最小运行时检查是：
 
 ```bash
 java -version
@@ -66,6 +66,20 @@ ffmpeg -version
 whisperx --help
 opendataloader-pdf --help
 ```
+
+## 可选：使用 WhisperX OpenAI 兼容服务
+
+如果不想让 Media-to-MD 直接调用 `whisperx` CLI，可以先单独启动 `whisperx-openai-server`，再在 `backend/config.json` 中设置：
+
+```json
+{
+  "whisperx_backend": "openai",
+  "whisperx_openai_base_url": "http://localhost:9000/v1",
+  "whisperx_openai_api_key": null
+}
+```
+
+此时音视频任务会调用 `/v1/audio/transcriptions`，并在 Media-to-MD 侧生成原有的 `txt/srt/vtt/json` artifacts。
 
 ## 后端
 
@@ -89,6 +103,8 @@ cd frontend
 npm install
 MEDIA_TO_MD_API_BASE_URL=http://localhost:8000/api npm run dev
 ```
+
+`MEDIA_TO_MD_API_BASE_URL` 是前端启动/构建时变量；修改后需要重启 Vite dev server，生产包需要重新构建。如果使用 `.env` 文件，请放到 `frontend/.env`，或在启动命令前显式导出变量。若浏览器曾保存过旧地址，可在管理页点击“应用 API 地址到本浏览器”，或清理 localStorage 的 `media_to_md_api_base_url`。
 
 访问：
 

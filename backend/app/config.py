@@ -12,6 +12,7 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CONFIG_JSON_PATH = BACKEND_ROOT / "config.json"
 WHISPERX_ARGS_ENV = "WHISPERX_ARGS_JSON"
 OPENDATALOADER_PDF_ARGS_ENV = "OPENDATALOADER_PDF_ARGS_JSON"
+WHISPERX_BACKENDS = {"cli", "openai"}
 
 _CONFIG_ARG_SPECS: dict[str, dict[str, Any]] = {
     "batch_size": {"flag": "--batch_size", "type": "int", "min": 1},
@@ -36,6 +37,7 @@ _CONFIG_ARG_SPECS: dict[str, dict[str, Any]] = {
     "min_speakers": {"flag": "--min_speakers", "type": "int", "min": 1},
     "max_speakers": {"flag": "--max_speakers", "type": "int", "min": 1},
     "speaker_embeddings": {"flag": "--speaker_embeddings", "type": "flag"},
+    "no_align": {"flag": "--no_align", "type": "flag"},
 }
 
 _PDF_CONFIG_ARG_SPECS: dict[str, dict[str, Any]] = {
@@ -103,6 +105,10 @@ class Settings:
     data_root: Path
     whisperx_model_dir: str | None
     whisperx_model: str = "small"
+    whisperx_backend: str = "cli"
+    whisperx_openai_base_url: str | None = None
+    whisperx_openai_api_key: str | None = None
+    whisperx_openai_timeout_seconds: float = 3600.0
     api_base_url: str | None = None
     model_cache_only: bool = False
     nltk_data_dir: str | None = None
@@ -140,6 +146,28 @@ def _optional_str(value: Any) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _normalize_whisperx_backend(value: Any) -> str:
+    text = (str(value).strip().lower() if value is not None else "cli")
+    if text in {"api", "openai_api", "openai-compatible", "openai_compatible"}:
+        text = "openai"
+    if text not in WHISPERX_BACKENDS:
+        allowed = ", ".join(sorted(WHISPERX_BACKENDS))
+        raise ValueError(f"whisperx_backend must be one of: {allowed}")
+    return text
+
+
+def _positive_float(value: Any, name: str, default: float) -> float:
+    if value is None or value == "":
+        return default
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be a positive number") from exc
+    if number <= 0:
+        raise ValueError(f"{name} must be a positive number")
+    return number
 
 
 def _normalize_arg_name(name: str) -> str:
@@ -526,6 +554,29 @@ def get_settings() -> Settings:
     if not model:
         raise ValueError("WHISPERX_MODEL must not be empty")
 
+    whisperx_backend = _normalize_whisperx_backend(
+        os.getenv("WHISPERX_BACKEND")
+        or _optional_str(config.get("whisperx_backend"))
+        or "cli"
+    )
+    whisperx_openai_base_url = (
+        os.getenv("WHISPERX_OPENAI_BASE_URL")
+        or _optional_str(config.get("whisperx_openai_base_url"))
+        or None
+    )
+    whisperx_openai_api_key = (
+        os.getenv("WHISPERX_OPENAI_API_KEY")
+        or _optional_str(config.get("whisperx_openai_api_key"))
+        or None
+    )
+    whisperx_openai_timeout_seconds = _positive_float(
+        os.getenv("WHISPERX_OPENAI_TIMEOUT_SECONDS")
+        if os.getenv("WHISPERX_OPENAI_TIMEOUT_SECONDS") is not None
+        else config.get("whisperx_openai_timeout_seconds"),
+        "whisperx_openai_timeout_seconds",
+        3600.0,
+    )
+
     env_nltk_data = os.getenv("WHISPERX_NLTK_DATA_DIR") or os.getenv("NLTK_DATA")
     config_nltk_data = _optional_str(config.get("nltk_data_dir"))
     if env_nltk_data:
@@ -566,6 +617,10 @@ def get_settings() -> Settings:
         data_root=data_root,
         whisperx_model=model,
         whisperx_model_dir=model_dir,
+        whisperx_backend=whisperx_backend,
+        whisperx_openai_base_url=whisperx_openai_base_url,
+        whisperx_openai_api_key=whisperx_openai_api_key,
+        whisperx_openai_timeout_seconds=whisperx_openai_timeout_seconds,
         api_base_url=api_base_url,
         model_cache_only=_bool_config(
             env_cache_only, _bool_config(config.get("model_cache_only"), False)

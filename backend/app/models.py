@@ -341,6 +341,10 @@ class ConfigResponse(BaseModel):
     api_base_url: str | None = None
     whisperx_model: str
     whisperx_model_dir: str | None
+    whisperx_backend: Literal["cli", "openai"] = "cli"
+    whisperx_openai_base_url: str | None = None
+    whisperx_openai_api_key_configured: bool = False
+    whisperx_openai_timeout_seconds: float = 3600.0
     model_cache_only: bool
     nltk_data_dir: str | None = None
     whisperx_args: list[str] = Field(default_factory=list)
@@ -353,6 +357,11 @@ class ConfigUpdateRequest(BaseModel):
     api_base_url: str | None = Field(default=None, max_length=4096)
     whisperx_model: str = Field(min_length=1, max_length=4096)
     whisperx_model_dir: str | None = Field(default=None, max_length=4096)
+    whisperx_backend: Literal["cli", "openai"] = "cli"
+    whisperx_openai_base_url: str | None = Field(default=None, max_length=4096)
+    whisperx_openai_api_key: str | None = Field(default=None, max_length=4096)
+    whisperx_openai_clear_api_key: bool = False
+    whisperx_openai_timeout_seconds: float = Field(default=3600.0, gt=0)
     model_cache_only: bool = False
     nltk_data_dir: str | None = Field(default=None, max_length=4096)
     whisperx_args: dict[str, Any] = Field(default_factory=dict)
@@ -368,7 +377,13 @@ class ConfigUpdateRequest(BaseModel):
             raise ValueError("config values must be single-line text")
         return text
 
-    @field_validator("api_base_url", "whisperx_model_dir", "nltk_data_dir")
+    @field_validator(
+        "api_base_url",
+        "whisperx_model_dir",
+        "nltk_data_dir",
+        "whisperx_openai_base_url",
+        "whisperx_openai_api_key",
+    )
     @classmethod
     def normalize_optional_text(cls, value: str | None) -> str | None:
         if value is None:

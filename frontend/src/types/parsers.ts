@@ -35,6 +35,10 @@ function asBoolean(value: unknown, defaultValue = false): boolean {
   return typeof value === 'boolean' ? value : defaultValue;
 }
 
+function asWhisperxBackend(value: unknown): 'cli' | 'openai' {
+  return value === 'openai' ? 'openai' : 'cli';
+}
+
 function asStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.map((item) => String(item)) : [];
 }
@@ -54,6 +58,10 @@ export function parseBackendConfig(json: unknown): BackendConfig {
     apiBaseUrl: asNullableString(object.api_base_url ?? object.apiBaseUrl),
     model: asString(object.whisperx_model ?? object.model, 'small'),
     modelDir: asNullableString(object.whisperx_model_dir ?? object.model_dir),
+    whisperxBackend: asWhisperxBackend(object.whisperx_backend),
+    whisperxOpenaiBaseUrl: asNullableString(object.whisperx_openai_base_url),
+    whisperxOpenaiApiKeyConfigured: asBoolean(object.whisperx_openai_api_key_configured, false),
+    whisperxOpenaiTimeoutSeconds: asNumber(object.whisperx_openai_timeout_seconds) ?? 3600,
     modelCacheOnly: asBoolean(object.model_cache_only, false),
     whisperxArgs: asStringArray(rawWhisperxArgs),
     whisperxArgsConfig: asUnknownRecord(rawWhisperxArgsConfig),

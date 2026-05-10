@@ -1,11 +1,13 @@
-export const DEFAULT_API_BASE_URL =
-  import.meta.env.MEDIA_TO_MD_API_BASE_URL ?? 'http://localhost:8000/api';
+export const FALLBACK_API_BASE_URL = 'http://localhost:8000/api';
+export const ENV_API_BASE_URL = import.meta.env.MEDIA_TO_MD_API_BASE_URL?.trim() || null;
+export const DEFAULT_API_BASE_URL = ENV_API_BASE_URL ?? FALLBACK_API_BASE_URL;
 export const API_BASE_URL = DEFAULT_API_BASE_URL;
 
 export const taskTypeWhisperx = 'whisperx' as const;
 export const taskTypePdf = 'pdf' as const;
 
 export type TaskType = typeof taskTypeWhisperx | typeof taskTypePdf;
+export type WhisperxBackend = 'cli' | 'openai';
 
 export const whisperxOutputFormats = ['txt', 'srt', 'vtt'] as const;
 
@@ -62,6 +64,10 @@ export interface BackendConfig {
   apiBaseUrl: string | null;
   model: string;
   modelDir: string | null;
+  whisperxBackend: WhisperxBackend;
+  whisperxOpenaiBaseUrl: string | null;
+  whisperxOpenaiApiKeyConfigured: boolean;
+  whisperxOpenaiTimeoutSeconds: number;
   modelCacheOnly: boolean;
   whisperxArgs: string[];
   whisperxArgsConfig: Record<string, unknown>;

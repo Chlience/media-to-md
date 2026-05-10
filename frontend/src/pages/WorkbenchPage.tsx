@@ -48,8 +48,8 @@ const whisperxPhaseSteps = [
   },
   {
     code: 'starting',
-    label: '启动转写进程',
-    detail: '启动 WhisperX 子进程并建立输出目录。',
+    label: '启动转写任务',
+    detail: '启动本地 CLI 或调用 OpenAI 兼容 WhisperX 服务。',
   },
   {
     code: 'model',

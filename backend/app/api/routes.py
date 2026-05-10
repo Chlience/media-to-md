@@ -49,6 +49,7 @@ from ..models import (
     RuntimePhase,
 )
 from ..storage import JobStorage, StorageError
+from ..whisperx_openai_runner import JobStorageOpenAIWhisperXRunner
 from ..whisperx_runner import ALLOWED_MODELS, JobStorageWhisperXRunner
 
 router = APIRouter(prefix="/api")
@@ -107,7 +108,7 @@ def require_admin(
 
 _WHISPERX_PHASE_LABELS: dict[str, tuple[str, str]] = {
     "queued": ("等待启动", "任务已创建，等待后端启动转写。"),
-    "starting": ("启动转写进程", "后端已接收任务，正在启动 WhisperX。"),
+    "starting": ("启动转写任务", "后端已接收任务，正在启动本地 CLI 或 OpenAI 兼容调用。"),
     "model": ("加载模型与参数", "WhisperX 正在初始化模型、设备和语言设置。"),
     "vad": ("语音活动检测", "正在识别音频中的有效语音片段。"),
     "transcription": ("语音转文字", "正在把语音片段转写为文本。"),
@@ -230,6 +231,10 @@ def _config_response(settings: Settings) -> ConfigResponse:
         api_base_url=settings.api_base_url,
         whisperx_model=settings.whisperx_model,
         whisperx_model_dir=settings.whisperx_model_dir,
+        whisperx_backend=settings.whisperx_backend,
+        whisperx_openai_base_url=settings.whisperx_openai_base_url,
+        whisperx_openai_api_key_configured=bool(settings.whisperx_openai_api_key),
+        whisperx_openai_timeout_seconds=settings.whisperx_openai_timeout_seconds,
         model_cache_only=settings.model_cache_only,
         nltk_data_dir=settings.nltk_data_dir,
         whisperx_args=list(settings.whisperx_args),
@@ -251,17 +256,23 @@ def update_config(
         normalized_pdf_args_config = normalize_opendataloader_pdf_args_config(
             update.opendataloader_pdf_args
         )
-        write_backend_config_update(
-            {
-                "whisperx_model": update.whisperx_model,
-                "api_base_url": update.api_base_url,
-                "whisperx_model_dir": update.whisperx_model_dir,
-                "model_cache_only": update.model_cache_only,
-                "nltk_data_dir": update.nltk_data_dir,
-                "whisperx_args": update.whisperx_args,
-                "opendataloader_pdf_args": normalized_pdf_args_config,
-            }
-        )
+        config_updates = {
+            "whisperx_model": update.whisperx_model,
+            "api_base_url": update.api_base_url,
+            "whisperx_model_dir": update.whisperx_model_dir,
+            "whisperx_backend": update.whisperx_backend,
+            "whisperx_openai_base_url": update.whisperx_openai_base_url,
+            "whisperx_openai_timeout_seconds": update.whisperx_openai_timeout_seconds,
+            "model_cache_only": update.model_cache_only,
+            "nltk_data_dir": update.nltk_data_dir,
+            "whisperx_args": update.whisperx_args,
+            "opendataloader_pdf_args": normalized_pdf_args_config,
+        }
+        if update.whisperx_openai_clear_api_key:
+            config_updates["whisperx_openai_api_key"] = None
+        elif update.whisperx_openai_api_key is not None:
+            config_updates["whisperx_openai_api_key"] = update.whisperx_openai_api_key
+        write_backend_config_update(config_updates)
         settings = get_settings()
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -269,7 +280,7 @@ def update_config(
     request.app.state.settings = settings
     if isinstance(
         request.app.state.job_service.runner,
-        (JobStorageWhisperXRunner, JobRunnerDispatcher),
+        (JobStorageWhisperXRunner, JobStorageOpenAIWhisperXRunner, JobRunnerDispatcher),
     ):
         request.app.state.job_service.runner = build_job_runner(
             request.app.state.storage, settings
