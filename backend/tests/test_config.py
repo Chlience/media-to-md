@@ -356,6 +356,8 @@ def test_whisperx_args_are_allowlisted_and_normalized():
     ) == {"batch_size": 4}
     with pytest.raises(ValueError, match="Unsupported whisperx_openai_args key"):
         normalize_whisperx_openai_args_config({"compute_type": "float16"})
+    with pytest.raises(ValueError, match="Unsupported whisperx_openai_args key"):
+        normalize_whisperx_openai_args_config({"diarize_model": "pyannote/speaker-diarization-community-1"})
 
 
 def test_opendataloader_pdf_args_are_safe_allowlisted_and_normalized():

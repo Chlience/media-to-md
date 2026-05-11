@@ -105,7 +105,7 @@ CLI 模式 `whisperx_cli_args` 允许：
 
 OpenAI 模式 `whisperx_openai_args` 允许：
 
-`batch_size`, `chunk_size`, `no_align`, `align_model`, `diarize_model`, `min_speakers`, `max_speakers`, `speaker_embeddings`
+`batch_size`, `chunk_size`, `no_align`, `align_model`, `min_speakers`, `max_speakers`, `speaker_embeddings`
 
 CLI 参数会转换为对应的 WhisperX CLI flag，例如：
 

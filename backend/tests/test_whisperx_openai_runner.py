@@ -85,6 +85,7 @@ class OpenAIWhisperXRunnerTests(unittest.TestCase):
                 config_fields={
                     "batch_size": 4,
                     "chunk_size": 30,
+                    "diarize_model": "pyannote/speaker-diarization-community-1",
                     "device": "cuda",
                     "speaker_embeddings": True,
                 },
@@ -100,6 +101,7 @@ class OpenAIWhisperXRunnerTests(unittest.TestCase):
         self.assertIn(("max_speakers", "2"), fields)
         self.assertIn(("batch_size", "4"), fields)
         self.assertIn(("chunk_size", "30"), fields)
+        self.assertNotIn(("diarize_model", "pyannote/speaker-diarization-community-1"), fields)
         self.assertIn(("speaker_embeddings", "true"), fields)
         self.assertNotIn(("device", "cuda"), fields)
 

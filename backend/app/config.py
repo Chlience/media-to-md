@@ -54,7 +54,6 @@ _OPENAI_CONFIG_ARG_NAMES: frozenset[str] = frozenset(
         "chunk_size",
         "no_align",
         "align_model",
-        "diarize_model",
         "min_speakers",
         "max_speakers",
         "speaker_embeddings",

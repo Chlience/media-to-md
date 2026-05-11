@@ -33,8 +33,7 @@ PDF 任务不受影响，仍走 `opendataloader-pdf`。
   "whisperx_openai_model": "large-v2",
   "whisperx_openai_args": {
     "batch_size": 8,
-    "chunk_size": 30,
-    "diarize_model": "/home/chlience/model/pyannote-speaker-diarization-community-1"
+    "chunk_size": 30
   }
 }
 ```
@@ -104,9 +103,9 @@ Media-to-MD 会向 OpenAI 兼容接口发送 multipart 表单：
 - 固定发送：`file`, `model`, `response_format=srt`, `diarize=true`
 - 语言：前台选择 `auto` 时不发送 `language`；手动选择时发送语言代码。
 - 说话人分离：始终开启；工作台不再提供关闭或每任务说话人数配置。
-- `whisperx_openai_args` 中会转发给远端的字段：`batch_size`, `chunk_size`, `no_align`, `align_model`, `diarize_model`, `min_speakers`, `max_speakers`, `speaker_embeddings`。
+- `whisperx_openai_args` 中会转发给远端的字段：`batch_size`, `chunk_size`, `no_align`, `align_model`, `min_speakers`, `max_speakers`, `speaker_embeddings`。
 
-`device`, `compute_type`, `model_dir`, `nltk_data_dir` 这类运行环境参数仍保留在 CLI 配置里，但在 `openai` 模式下主要由远端 `whisperx-openai-server` 自己控制。旧版 `whisperx_args` 仍会作为兼容回退读取；保存配置时会拆为 `whisperx_cli_args` 与 `whisperx_openai_args`。
+`device`, `compute_type`, `model_dir`, `nltk_data_dir`、`diarize_model` 这类运行环境/模型加载参数在 `openai` 模式下由远端 `whisperx-openai-server` 自己控制，Media-to-MD 不转发。旧版 `whisperx_args` 仍会作为兼容回退读取；保存配置时会拆为 `whisperx_cli_args` 与 `whisperx_openai_args`。
 
 ## 输出文件
 

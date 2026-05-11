@@ -47,7 +47,7 @@
 }
 ```
 
-`diarize_model` 建议指向已下载到本机的 pyannote diarization 模型目录。`min_speakers` / `max_speakers` 可留空由模型自动判断；通常不需要开启 `speaker_embeddings`。Hugging Face token 不通过管理页保存，若仍需访问 gated 模型，请在启动后端或直接运行 CLI 的环境中提供 token。
+CLI 模式下，`diarize_model` 可以指向已下载到本机的 pyannote diarization 模型目录。OpenAI 模式下，Media-to-MD 不转发 `diarize_model`，说话人分离模型由远端 `whisperx-openai-server` 启动配置决定。`min_speakers` / `max_speakers` 可留空由模型自动判断；通常不需要开启 `speaker_embeddings`。Hugging Face token 不通过管理页保存，若仍需访问 gated 模型，请在启动后端或直接运行 CLI 的环境中提供 token。
 
 ## 常见问题
 

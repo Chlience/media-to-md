@@ -458,7 +458,6 @@ def test_admin_can_update_backend_config(monkeypatch, tmp_path):
             },
             "whisperx_openai_args": {
                 "batch_size": 12,
-                "diarize_model": "/models/remote-pyannote",
                 "min_speakers": 1,
                 "max_speakers": 4,
                 "speaker_embeddings": True,
@@ -488,8 +487,6 @@ def test_admin_can_update_backend_config(monkeypatch, tmp_path):
         "whisperx_args": [
             "--batch_size",
             "12",
-            "--diarize_model",
-            "/models/remote-pyannote",
             "--min_speakers",
             "1",
             "--max_speakers",
@@ -498,7 +495,6 @@ def test_admin_can_update_backend_config(monkeypatch, tmp_path):
         ],
         "whisperx_args_config": {
             "batch_size": 12,
-            "diarize_model": "/models/remote-pyannote",
             "min_speakers": 1,
             "max_speakers": 4,
             "speaker_embeddings": True,
@@ -518,7 +514,6 @@ def test_admin_can_update_backend_config(monkeypatch, tmp_path):
         },
         "whisperx_openai_args_config": {
             "batch_size": 12,
-            "diarize_model": "/models/remote-pyannote",
             "min_speakers": 1,
             "max_speakers": 4,
             "speaker_embeddings": True,
@@ -552,7 +547,6 @@ def test_admin_can_update_backend_config(monkeypatch, tmp_path):
     assert '"whisperx_openai_model": "/models/faster-whisper-large-v2"' in saved
     assert '"batch_size": 12' in saved
     assert '"batch_size": 6' in saved
-    assert '"diarize_model": "/models/remote-pyannote"' in saved
     assert '"diarize_model": "/models/local-pyannote"' in saved
     assert '"whisperx_backend": "openai"' in saved
     assert '"whisperx_openai_api_key": "test-key"' in saved
@@ -591,6 +585,27 @@ def test_admin_can_update_backend_config(monkeypatch, tmp_path):
     assert isinstance(pdf_runner, JobStorageOpenDataLoaderPdfRunner)
     assert pdf_runner.config.llm_config.enabled is False
     assert pdf_runner.config.llm_config.provider == "deepseek"
+
+
+def test_admin_config_update_rejects_openai_diarize_model(tmp_path):
+    client, _, _ = make_client(tmp_path)
+    headers = admin_headers(client)
+
+    response = client.put(
+        "/api/admin/config",
+        headers=headers,
+        json={
+            "whisperx_cli_model": "small",
+            "whisperx_openai_model": "large-v2",
+            "whisperx_backend": "openai",
+            "whisperx_openai_args": {
+                "diarize_model": "pyannote/speaker-diarization-community-1",
+            },
+        },
+    )
+
+    assert response.status_code == 400
+    assert "Unsupported whisperx_openai_args key 'diarize_model'" in response.text
 
 
 def test_admin_can_fetch_llm_models_and_check_connection(monkeypatch, tmp_path):
