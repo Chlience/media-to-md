@@ -72,11 +72,11 @@ whisperx <input-media> \
 POST <base>/v1/audio/transcriptions
 file=<uploaded-media>
 model=<job-model>
-response_format=verbose_json
-timestamp_granularities[]=segment
+response_format=srt
+diarize=true
 ```
 
-返回的 `verbose_json` 会先转换成 `result.srt`，再删除 SRT 序号行和时间行派生 `result.txt`。
+返回的 SRT 会写入 `result.srt`，再删除 SRT 序号行和时间行派生 `result.txt`。
 
 OpenAI 模式只转发适合每次请求覆盖的 `whisperx_openai_args`：`batch_size`, `chunk_size`, `no_align`, `align_model`, `diarize_model`, `min_speakers`, `max_speakers`, `speaker_embeddings`。设备、模型目录、compute type 等由远端 WhisperX 服务启动参数控制。
 

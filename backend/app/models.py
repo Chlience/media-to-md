@@ -48,7 +48,7 @@ class WhisperXJobOptions(BaseModel):
     task_type: Literal["whisperx"] = "whisperx"
     model: str = Field(default="small", min_length=1, max_length=4096)
     language: str | None = Field(default="auto", max_length=32)
-    diarize: bool = False
+    diarize: bool = True
     min_speakers: int | None = Field(default=None, ge=1)
     max_speakers: int | None = Field(default=None, ge=1)
     model_dir: str | None = None

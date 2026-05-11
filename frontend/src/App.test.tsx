@@ -39,8 +39,8 @@ describe('hash routing shell', () => {
     expect(languageModeSelect.value).toBe('auto');
     expect(screen.getByLabelText('语言代码')).toBeDisabled();
     expect(screen.getByLabelText('语言代码')).toHaveAttribute('placeholder', '默认 auto；手动可填 en、zh、ja');
-    const diarizeSelect = screen.getByLabelText('说话人分离') as HTMLSelectElement;
-    expect(diarizeSelect.value).toBe('true');
+    expect(screen.queryByLabelText('说话人分离')).not.toBeInTheDocument();
+    expect(screen.getByText(/说话人分离默认开启/)).toBeInTheDocument();
     const llmPolishSelect = screen.getByLabelText('LLM 润色') as HTMLSelectElement;
     expect(llmPolishSelect.value).toBe('false');
     fireEvent.change(llmPolishSelect, { target: { value: 'true' } });
@@ -48,8 +48,8 @@ describe('hash routing shell', () => {
     expect(screen.getByText(/额外生成 LLM 润色版 Markdown/)).toBeInTheDocument();
     expect(screen.queryByLabelText('输出格式')).not.toBeInTheDocument();
     expect(screen.queryByDisplayValue(/output_formats=/)).not.toBeInTheDocument();
-    expect(screen.getByLabelText('最少说话人数')).not.toBeDisabled();
-    expect(screen.getByLabelText('最多说话人数')).not.toBeDisabled();
+    expect(screen.queryByLabelText('最少说话人数')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('最多说话人数')).not.toBeInTheDocument();
     const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
     const mediaFile = new File(['abc'], 'sample.mp3', { type: 'audio/mpeg' });
     fireEvent.change(fileInput, {

@@ -101,18 +101,18 @@ Media-to-MD 会自动启用该服务的非 OpenAI sidecar 进度能力：
 
 Media-to-MD 会向 OpenAI 兼容接口发送 multipart 表单：
 
-- 固定发送：`file`, `model`, `response_format=verbose_json`, `timestamp_granularities[]=segment`
+- 固定发送：`file`, `model`, `response_format=srt`, `diarize=true`
 - 语言：前台选择 `auto` 时不发送 `language`；手动选择时发送语言代码。
-- 说话人分离：开启时发送 `diarize=true`，以及可选的 `min_speakers` / `max_speakers`。
+- 说话人分离：始终开启；工作台不再提供关闭或每任务说话人数配置。
 - `whisperx_openai_args` 中会转发给远端的字段：`batch_size`, `chunk_size`, `no_align`, `align_model`, `diarize_model`, `min_speakers`, `max_speakers`, `speaker_embeddings`。
 
 `device`, `compute_type`, `model_dir`, `nltk_data_dir` 这类运行环境参数仍保留在 CLI 配置里，但在 `openai` 模式下主要由远端 `whisperx-openai-server` 自己控制。旧版 `whisperx_args` 仍会作为兼容回退读取；保存配置时会拆为 `whisperx_cli_args` 与 `whisperx_openai_args`。
 
 ## 输出文件
 
-OpenAI 兼容接口一次返回 JSON；Media-to-MD 会把它转换成字幕和纯文本 artifacts：
+OpenAI 兼容接口直接返回 SRT；Media-to-MD 会把它保存为字幕并派生纯文本 artifacts：
 
-- `result.srt`：由 `segments` 生成的字幕。
+- `result.srt`：远端返回的 SRT 字幕。
 - `result.txt`：从 `result.srt` 删除序号行和时间行后派生的纯文本。
 
 所以前端下载、ZIP 打包、任务列表只公开 SRT 与派生 TXT。

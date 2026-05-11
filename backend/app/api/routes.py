@@ -457,9 +457,6 @@ async def upload_job(
     file: UploadFile = File(...),
     model: str | None = Form(None),
     language: str | None = Form("auto"),
-    diarize: bool = Form(False),
-    min_speakers: int | None = Form(None),
-    max_speakers: int | None = Form(None),
     model_cache_only: bool | None = Form(None),
     output_formats: str | None = Form(None),
     task_type: str = Form("whisperx"),
@@ -506,9 +503,7 @@ async def upload_job(
             task_type="whisperx",
             model=selected_model,
             language=language,
-            diarize=diarize,
-            min_speakers=min_speakers,
-            max_speakers=max_speakers,
+            diarize=True,
             model_dir=settings.whisperx_model_dir,
             model_cache_only=settings.model_cache_only
             if model_cache_only is None

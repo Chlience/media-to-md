@@ -32,7 +32,7 @@
 
 ## 说话人分离
 
-普通工作台可以开启 diarize。说话人分离通常需要额外模型和本地缓存。若运行环境没有准备好，建议先关闭 diarize，确认基础转写成功后再启用。
+音视频任务默认开启 diarize，普通工作台不再提供关闭开关或每任务说话人数配置。说话人分离通常需要额外模型和本地缓存；若运行环境没有准备好，应先在管理员运行配置中修正模型路径或远端服务配置。
 
 管理员可以在运行配置中设置说话人分离相关参数：
 
@@ -47,7 +47,7 @@
 }
 ```
 
-`diarize_model` 建议指向已下载到本机的 pyannote diarization 模型目录。`min_speakers` / `max_speakers` 可留空由模型自动判断；只有需要把说话人向量写入 JSON 时才开启 `speaker_embeddings`。Hugging Face token 不通过管理页保存，若仍需访问 gated 模型，请在启动后端或直接运行 CLI 的环境中提供 token。
+`diarize_model` 建议指向已下载到本机的 pyannote diarization 模型目录。`min_speakers` / `max_speakers` 可留空由模型自动判断；通常不需要开启 `speaker_embeddings`。Hugging Face token 不通过管理页保存，若仍需访问 gated 模型，请在启动后端或直接运行 CLI 的环境中提供 token。
 
 ## 常见问题
 

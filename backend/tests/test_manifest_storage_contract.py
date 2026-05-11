@@ -51,7 +51,7 @@ def _example_manifest(job_id="job-contract"):
             "task_type": "whisperx",
             "model": "small",
             "language": "auto",
-            "diarize": False,
+            "diarize": True,
             "model_dir": None,
             "model_cache_only": False,
             "output_formats": ["srt", "txt"],

@@ -75,7 +75,7 @@ class WhisperXOptions:
 
     model: str = "small"
     language: str | None = None
-    diarize: bool = False
+    diarize: bool = True
     min_speakers: int | None = None
     max_speakers: int | None = None
     model_cache_only: bool = False
@@ -354,7 +354,7 @@ def options_from_job_options(job_options) -> WhisperXOptions:
     return WhisperXOptions(
         model=getattr(job_options, "model", "small"),
         language=language,
-        diarize=bool(getattr(job_options, "diarize", False)),
+        diarize=bool(getattr(job_options, "diarize", True)),
         min_speakers=getattr(job_options, "min_speakers", None),
         max_speakers=getattr(job_options, "max_speakers", None),
         model_cache_only=bool(getattr(job_options, "model_cache_only", False)),

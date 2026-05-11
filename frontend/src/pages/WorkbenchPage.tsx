@@ -41,16 +41,6 @@ function fileSizeLimitError(file: File): string | null {
   return `文件超过最大上传限制：最大 ${formatBytes(MAX_UPLOAD_SIZE_BYTES)}，当前 ${formatBytes(file.size)}。`;
 }
 
-function parseOptionalSpeakerCount(value: string, label: string): number | null {
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  const parsed = Number(trimmed);
-  if (!Number.isInteger(parsed) || parsed < 1) {
-    throw new Error(`${label}必须是大于等于 1 的整数。`);
-  }
-  return parsed;
-}
-
 function resolveWhisperxPhase(job: JobStatus | null) {
   if (!job) {
     return {
@@ -152,9 +142,6 @@ export function WorkbenchPage() {
   const [taskType, setTaskType] = useState<TaskType>(taskTypeWhisperx);
   const [languageMode, setLanguageMode] = useState<LanguageMode>('auto');
   const [language, setLanguage] = useState('');
-  const [diarize, setDiarize] = useState(true);
-  const [minSpeakers, setMinSpeakers] = useState('');
-  const [maxSpeakers, setMaxSpeakers] = useState('');
   const [cleanupStrength, setCleanupStrength] =
     useState<PdfCleanupStrength>(pdfCleanupStrengthBalanced);
   const [llmPolish, setLlmPolish] = useState(false);
@@ -225,20 +212,6 @@ export function WorkbenchPage() {
     setSubmitting(true);
     setError(null);
     try {
-      const shouldDiarize = taskType === taskTypeWhisperx && diarize;
-      const parsedMinSpeakers = shouldDiarize
-        ? parseOptionalSpeakerCount(minSpeakers, '最少说话人数')
-        : null;
-      const parsedMaxSpeakers = shouldDiarize
-        ? parseOptionalSpeakerCount(maxSpeakers, '最多说话人数')
-        : null;
-      if (
-        parsedMinSpeakers !== null &&
-        parsedMaxSpeakers !== null &&
-        parsedMinSpeakers > parsedMaxSpeakers
-      ) {
-        throw new Error('最少说话人数不能大于最多说话人数。');
-      }
       const uploaded = await api.uploadAndStart({
         file: fileToUploadable(file),
         options:
@@ -251,9 +224,6 @@ export function WorkbenchPage() {
             : {
                 taskType: taskTypeWhisperx,
                 language: languageMode === 'auto' ? 'auto' : language.trim() || 'auto',
-                diarize,
-                minSpeakers: parsedMinSpeakers,
-                maxSpeakers: parsedMaxSpeakers,
                 llmPolish,
               },
       });
@@ -369,49 +339,10 @@ export function WorkbenchPage() {
                       disabled={languageMode === 'auto'}
                     />
                   </div>
-                  <div className="field">
-                    <label className="label" htmlFor="diarize-enabled">
-                      说话人分离
-                    </label>
-                    <select
-                      id="diarize-enabled"
-                      className="select"
-                      value={String(diarize)}
-                      onChange={(event) => setDiarize(event.target.value === 'true')}
-                    >
-                      <option value="false">关闭</option>
-                      <option value="true">开启</option>
-                    </select>
-                  </div>
-                  <div className="field">
-                    <label className="label" htmlFor="min-speakers">
-                      最少说话人数
-                    </label>
-                    <input
-                      id="min-speakers"
-                      className="input mono"
-                      type="number"
-                      min="1"
-                      value={minSpeakers}
-                      onChange={(event) => setMinSpeakers(event.target.value)}
-                      placeholder="自动"
-                      disabled={!diarize}
-                    />
-                  </div>
-                  <div className="field">
-                    <label className="label" htmlFor="max-speakers">
-                      最多说话人数
-                    </label>
-                    <input
-                      id="max-speakers"
-                      className="input mono"
-                      type="number"
-                      min="1"
-                      value={maxSpeakers}
-                      onChange={(event) => setMaxSpeakers(event.target.value)}
-                      placeholder="自动"
-                      disabled={!diarize}
-                    />
+                  <div className="field field-full">
+                    <div className="status-note">
+                      说话人分离默认开启，由后端统一执行，不需要单独配置。
+                    </div>
                   </div>
                 </div>
               ) : (

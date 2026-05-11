@@ -122,7 +122,7 @@ CLI 参数会转换为对应的 WhisperX CLI flag，例如：
 
 ### WhisperX OpenAI 兼容模式
 
-设置 `whisperx_backend = "openai"` 后，音视频任务会调用 `whisperx_openai_base_url` 对应的 `/v1/audio/transcriptions`，并把返回的 `verbose_json` 转成 `result.srt`，再删除 SRT 序号行和时间行派生 `result.txt`。详见 `docs/whisperx-openai-backend.md`。
+设置 `whisperx_backend = "openai"` 后，音视频任务会调用 `whisperx_openai_base_url` 对应的 `/v1/audio/transcriptions`，固定请求 `response_format=srt`，并把返回的 `result.srt` 删除序号行和时间行后派生 `result.txt`。详见 `docs/whisperx-openai-backend.md`。
 
 ### 允许的 PDF 参数
 

@@ -151,6 +151,7 @@ def test_upload_status_config_reconstruct_from_filesystem(tmp_path):
     assert status["options"]["model"] == "small"
     assert status["options"]["model_dir"] == "/models"
     assert status["options"]["output_formats"] == ["srt", "txt"]
+    assert status["options"]["diarize"] is True
     assert set(status) >= {
         "job_id",
         "status",
@@ -566,6 +567,7 @@ def test_admin_can_update_backend_config(monkeypatch, tmp_path):
     assert status["options"]["model"] == "/models/faster-whisper-large-v2"
     assert status["options"]["model_dir"] == "/models"
     assert status["options"]["model_cache_only"] is True
+    assert status["options"]["diarize"] is True
     runner = client.app.state.job_service.runner
     assert isinstance(runner, JobRunnerDispatcher)
     whisperx_runner = runner.runners["whisperx"]
@@ -721,7 +723,7 @@ def test_whisperx_upload_rejects_removed_json_output_format(tmp_path):
     assert "output_formats" in response.text
 
 
-def test_whisperx_upload_accepts_diarization_speaker_range(tmp_path):
+def test_whisperx_upload_uses_fixed_diarization_and_ignores_speaker_range(tmp_path):
     client, _, _ = make_client(tmp_path)
 
     response = client.post(
@@ -740,12 +742,12 @@ def test_whisperx_upload_accepts_diarization_speaker_range(tmp_path):
     assert response.status_code == 201, response.text
     status = client.get(f"/api/jobs/{response.json()['job_id']}/status").json()
     assert status["options"]["diarize"] is True
-    assert status["options"]["min_speakers"] == 1
-    assert status["options"]["max_speakers"] == 4
+    assert status["options"]["min_speakers"] is None
+    assert status["options"]["max_speakers"] is None
     assert status["options"]["output_formats"] == ["srt", "txt"]
 
 
-def test_whisperx_upload_rejects_invalid_speaker_range(tmp_path):
+def test_whisperx_upload_ignores_removed_speaker_range_fields(tmp_path):
     client, _, _ = make_client(tmp_path)
 
     response = client.post(
@@ -760,8 +762,11 @@ def test_whisperx_upload_rejects_invalid_speaker_range(tmp_path):
         },
     )
 
-    assert response.status_code == 400
-    assert "min_speakers" in response.text
+    assert response.status_code == 201, response.text
+    status = client.get(f"/api/jobs/{response.json()['job_id']}/status").json()
+    assert status["options"]["diarize"] is True
+    assert status["options"]["min_speakers"] is None
+    assert status["options"]["max_speakers"] is None
 
 
 def test_upload_rejects_invalid_whisperx_output_format(tmp_path):
@@ -858,7 +863,7 @@ def test_upload_accepts_task_type_pdf(tmp_path):
     assert "output_formats" not in status["options"]
 
 
-def test_upload_rejects_invalid_bool_value_with_route_level_400(tmp_path):
+def test_upload_ignores_removed_diarize_form_field(tmp_path):
     client, _, _ = make_client(tmp_path)
 
     response = client.post(
@@ -867,8 +872,9 @@ def test_upload_rejects_invalid_bool_value_with_route_level_400(tmp_path):
         data={"model": "small", "language": "auto", "diarize": "not_bool"},
     )
 
-    assert response.status_code == 400
-    assert "bool" in response.text.lower() or "boolean" in response.text.lower()
+    assert response.status_code == 201, response.text
+    status = client.get(f"/api/jobs/{response.json()['job_id']}/status").json()
+    assert status["options"]["diarize"] is True
 
 
 def test_upload_rejects_unknown_task_type(tmp_path):

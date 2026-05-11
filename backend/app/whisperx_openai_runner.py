@@ -1,8 +1,8 @@
 """OpenAI-compatible WhisperX runner for Media-to-MD jobs.
 
 This runner lets the backend submit media to a WhisperX service exposing
-OpenAI's ``/v1/audio/transcriptions`` multipart shape, then converts the
-verbose JSON response back into the same artifact files expected by the UI.
+OpenAI's ``/v1/audio/transcriptions`` multipart shape, then stores the
+SRT response and derives plain text from it for the UI.
 """
 
 from __future__ import annotations
@@ -81,7 +81,7 @@ class OpenAIWhisperXRunRequest:
 @dataclass(frozen=True)
 class OpenAIWhisperXRunResult(WhisperXRunResult):
     endpoint: str = ""
-    response: Mapping[str, Any] = field(default_factory=dict)
+    response_text: str = ""
 
 
 async def _maybe_await(value: Awaitable[None] | None) -> None:
@@ -171,8 +171,7 @@ def build_openai_form_fields(
     )
     fields: list[tuple[str, str]] = [
         ("model", normalized.model),
-        ("response_format", "verbose_json"),
-        ("timestamp_granularities[]", "segment"),
+        ("response_format", "srt"),
     ]
     fields.extend(_openai_config_fields(config.config_fields))
     if normalized.language is not None:
@@ -189,13 +188,9 @@ def build_openai_form_fields(
 def _dedupe_form_fields(fields: Sequence[tuple[str, str]]) -> list[tuple[str, str]]:
     """Keep the last configured scalar field while preserving repeated arrays."""
 
-    repeated_names = {"timestamp_granularities[]", "timestamp_granularities"}
     scalar_positions: dict[str, int] = {}
     result: list[tuple[str, str]] = []
     for name, value in fields:
-        if name in repeated_names:
-            result.append((name, value))
-            continue
         previous = scalar_positions.get(name)
         if previous is None:
             scalar_positions[name] = len(result)
@@ -283,62 +278,15 @@ def _response_status(response: Any) -> int:
     return 200
 
 
-def _format_timestamp(seconds: Any, separator: str) -> str:
-    try:
-        value = float(seconds)
-    except (TypeError, ValueError):
-        value = 0.0
-    if value < 0:
-        value = 0.0
-    total_ms = int(round(value * 1000))
-    hours, remainder = divmod(total_ms, 3_600_000)
-    minutes, remainder = divmod(remainder, 60_000)
-    secs, millis = divmod(remainder, 1000)
-    return f"{hours:02d}:{minutes:02d}:{secs:02d}{separator}{millis:03d}"
-
-
-def _segment_text(segment: Mapping[str, Any]) -> str:
-    text = str(segment.get("text") or "").strip()
-    speaker = segment.get("speaker")
-    if speaker:
-        return f"[{speaker}] {text}".strip()
-    return text
-
-
-def _segments(payload: Mapping[str, Any]) -> list[Mapping[str, Any]]:
-    raw_segments = payload.get("segments")
-    if not isinstance(raw_segments, list):
-        return []
-    return [segment for segment in raw_segments if isinstance(segment, Mapping)]
-
-
-def _render_srt(payload: Mapping[str, Any]) -> str:
-    lines: list[str] = []
-    index = 1
-    for segment in _segments(payload):
-        text = _segment_text(segment)
-        if not text:
-            continue
-        lines.extend(
-            [
-                str(index),
-                f"{_format_timestamp(segment.get('start'), ',')} --> {_format_timestamp(segment.get('end'), ',')}",
-                text,
-                "",
-            ]
-        )
-        index += 1
-    return "\n".join(lines)
-
-
-def write_openai_response_artifacts(
-    payload: Mapping[str, Any], output_dir: Path
-) -> None:
-    """Write Media-to-MD standard artifacts from an OpenAI verbose JSON payload."""
+def write_openai_response_artifacts(srt_content: str, output_dir: Path) -> None:
+    """Write Media-to-MD standard artifacts from an OpenAI SRT response."""
 
     output_dir.mkdir(parents=True, exist_ok=True)
     srt_path = output_dir / "result.srt"
-    srt_path.write_text(_render_srt(payload), encoding="utf-8")
+    srt_path.write_text(
+        srt_content.rstrip() + ("\n" if srt_content else ""),
+        encoding="utf-8",
+    )
     write_plain_text_from_srt(srt_path, output_dir / "result.txt")
 
 
@@ -413,11 +361,11 @@ class OpenAIWhisperXRunner:
             else None
         )
         try:
-            payload = await post_task
+            srt_content = await post_task
         finally:
             if progress_task is not None:
                 await progress_task
-        write_openai_response_artifacts(payload, request.output_dir)
+        write_openai_response_artifacts(srt_content, request.output_dir)
         await self._log(
             request,
             on_log,
@@ -428,7 +376,7 @@ class OpenAIWhisperXRunner:
             returncode=0,
             log_path=request.log_path,
             endpoint=endpoint,
-            response=payload,
+            response_text=srt_content,
         )
 
     async def _log(
@@ -500,7 +448,7 @@ class OpenAIWhisperXRunner:
         on_log: LogCallback | None,
         on_progress: ProgressCallback | None,
         progress_url: str,
-        post_task: asyncio.Task[dict[str, Any]],
+        post_task: asyncio.Task[str],
     ) -> None:
         last_logged: Mapping[str, Any] | None = None
         while True:
@@ -547,7 +495,7 @@ class OpenAIWhisperXRunner:
         fields: Sequence[tuple[str, str]],
         input_path: Path,
         extra_headers: Mapping[str, str] | None = None,
-    ) -> dict[str, Any]:
+    ) -> str:
         content = input_path.read_bytes()
         content_type = (
             mimetypes.guess_type(input_path.name)[0] or "application/octet-stream"
@@ -556,7 +504,7 @@ class OpenAIWhisperXRunner:
             fields, ("file", input_path.name, content, content_type)
         )
         headers = {
-            "Accept": "application/json",
+            "Accept": "text/plain, application/x-subrip, application/json;q=0.5",
             "Content-Type": multipart_content_type,
         }
         if extra_headers:
@@ -600,19 +548,7 @@ class OpenAIWhisperXRunner:
                 f"WhisperX OpenAI API request failed with HTTP {status}: {_extract_error_message(response_body)}",
                 status,
             )
-        try:
-            data = json.loads(response_body.decode("utf-8"))
-        except json.JSONDecodeError as exc:
-            raise WhisperXRunnerError(
-                WhisperXErrorKind.PROCESS,
-                "WhisperX OpenAI API response was not valid JSON.",
-            ) from exc
-        if not isinstance(data, dict):
-            raise WhisperXRunnerError(
-                WhisperXErrorKind.PROCESS,
-                "WhisperX OpenAI API response must be a JSON object.",
-            )
-        return data
+        return response_body.decode("utf-8", errors="replace")
 
 
 class JobStorageOpenAIWhisperXRunner(OpenAIWhisperXRunner):

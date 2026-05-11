@@ -93,8 +93,8 @@ class OpenAIWhisperXRunnerTests(unittest.TestCase):
 
         self.assertIn(("model", "large-v2"), fields)
         self.assertIn(("language", "zh"), fields)
-        self.assertIn(("response_format", "verbose_json"), fields)
-        self.assertIn(("timestamp_granularities[]", "segment"), fields)
+        self.assertIn(("response_format", "srt"), fields)
+        self.assertNotIn(("timestamp_granularities[]", "segment"), fields)
         self.assertIn(("diarize", "true"), fields)
         self.assertIn(("min_speakers", "1"), fields)
         self.assertIn(("max_speakers", "2"), fields)
@@ -117,17 +117,11 @@ class OpenAIWhisperXRunnerTests(unittest.TestCase):
                         model="small", language="zh", diarize=True, min_speakers=1
                     ),
                 )
-                response_payload = {
-                    "text": "你好 世界",
-                    "segments": [
-                        {
-                            "start": 0.0,
-                            "end": 1.25,
-                            "text": "你好 世界",
-                            "speaker": "SPEAKER_00",
-                        }
-                    ],
-                }
+                response_payload = (
+                    "1\n"
+                    "00:00:00,000 --> 00:00:01,250\n"
+                    "[SPEAKER_00] 你好 世界\n"
+                )
                 captured = {}
 
                 class FakeResponse:
@@ -140,7 +134,7 @@ class OpenAIWhisperXRunnerTests(unittest.TestCase):
                         return None
 
                     def read(self):
-                        return json.dumps(response_payload).encode("utf-8")
+                        return response_payload.encode("utf-8")
 
                 def fake_urlopen(http_request, timeout):
                     captured["url"] = http_request.full_url
@@ -170,13 +164,18 @@ class OpenAIWhisperXRunnerTests(unittest.TestCase):
                 self.assertEqual(
                     captured["headers"].get("Authorization"), "Bearer secret"
                 )
+                self.assertIn("text/plain", captured["headers"].get("Accept", ""))
                 body = captured["body"].decode("utf-8", errors="replace")
                 self.assertIn('name="model"', body)
                 self.assertIn('name="language"', body)
                 self.assertIn('name="diarize"', body)
+                self.assertIn("srt", body)
+                self.assertNotIn("verbose_json", body)
+                self.assertNotIn("timestamp_granularities", body)
                 self.assertIn('name="batch_size"', body)
                 self.assertIn('filename="audio.wav"', body)
                 self.assertEqual(result.returncode, 0)
+                self.assertEqual(result.response_text, response_payload)
                 self.assertEqual(
                     (request.output_dir / "result.txt").read_text(encoding="utf-8"),
                     "[SPEAKER_00] 你好 世界\n",
@@ -203,7 +202,7 @@ class OpenAIWhisperXRunnerTests(unittest.TestCase):
                     options=WhisperXOptions(model="small"),
                     request_id="job-123",
                 )
-                response_payload = {"text": "ok", "segments": []}
+                response_payload = "1\n00:00:00,000 --> 00:00:01,000\nok\n"
                 progress_payloads = [
                     {
                         "schemaVersion": 1,
@@ -247,6 +246,8 @@ class OpenAIWhisperXRunnerTests(unittest.TestCase):
                         return None
 
                     def read(self):
+                        if isinstance(self.payload, str):
+                            return self.payload.encode("utf-8")
                         return json.dumps(self.payload).encode("utf-8")
 
                 def fake_urlopen(http_request, timeout):
