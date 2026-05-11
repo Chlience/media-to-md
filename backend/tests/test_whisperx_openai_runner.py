@@ -179,22 +179,14 @@ class OpenAIWhisperXRunnerTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0)
                 self.assertEqual(
                     (request.output_dir / "result.txt").read_text(encoding="utf-8"),
-                    "你好 世界\n",
+                    "[SPEAKER_00] 你好 世界\n",
                 )
                 self.assertIn(
                     "SPEAKER_00",
                     (request.output_dir / "result.srt").read_text(encoding="utf-8"),
                 )
-                self.assertIn(
-                    "WEBVTT",
-                    (request.output_dir / "result.vtt").read_text(encoding="utf-8"),
-                )
-                self.assertEqual(
-                    json.loads(
-                        (request.output_dir / "result.json").read_text(encoding="utf-8")
-                    ),
-                    response_payload,
-                )
+                self.assertFalse((request.output_dir / "result.vtt").exists())
+                self.assertFalse((request.output_dir / "result.json").exists())
 
         asyncio.run(exercise())
 
@@ -326,17 +318,9 @@ class JobStorageOpenAIWhisperXRunnerTests(unittest.TestCase):
             class FakeRunner(JobStorageOpenAIWhisperXRunner):
                 async def run(self, request, on_log=None, on_progress=None):
                     request.output_dir.mkdir(parents=True, exist_ok=True)
-                    (request.output_dir / "result.txt").write_text(
-                        "ok", encoding="utf-8"
-                    )
                     (request.output_dir / "result.srt").write_text(
-                        "srt", encoding="utf-8"
-                    )
-                    (request.output_dir / "result.vtt").write_text(
-                        "vtt", encoding="utf-8"
-                    )
-                    (request.output_dir / "result.json").write_text(
-                        "{}", encoding="utf-8"
+                        "1\n00:00:00,000 --> 00:00:01,000\nok\n",
+                        encoding="utf-8",
                     )
                     if on_log is not None:
                         await on_log("fake openai ok")
@@ -360,7 +344,7 @@ class JobStorageOpenAIWhisperXRunnerTests(unittest.TestCase):
                 manifest = storage.create_job(
                     io.BytesIO(b"fake audio"),
                     "input.wav",
-                    JobOptions(output_formats=["txt", "json"]),
+                    JobOptions(output_formats=["srt", "txt"]),
                 )
 
                 runner = FakeRunner(
@@ -372,7 +356,13 @@ class JobStorageOpenAIWhisperXRunnerTests(unittest.TestCase):
                 updated = storage.read_manifest(manifest.job_id)
                 self.assertEqual(updated.status, JobStatus.succeeded)
                 self.assertEqual(
-                    {artifact.format for artifact in updated.artifacts}, {"txt", "json"}
+                    {artifact.format for artifact in updated.artifacts}, {"txt", "srt"}
+                )
+                self.assertEqual(
+                    (
+                        storage.job_dir(manifest.job_id) / "output" / "result.txt"
+                    ).read_text(encoding="utf-8"),
+                    "ok\n",
                 )
                 self.assertTrue(
                     any(

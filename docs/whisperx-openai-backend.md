@@ -110,13 +110,12 @@ Media-to-MD 会向 OpenAI 兼容接口发送 multipart 表单：
 
 ## 输出文件
 
-OpenAI 兼容接口一次返回 JSON；Media-to-MD 会把它转换成原有 artifacts：
+OpenAI 兼容接口一次返回 JSON；Media-to-MD 会把它转换成字幕和纯文本 artifacts：
 
-- `result.json`：原始 `verbose_json` 响应。
-- `result.txt`：`text` 字段。
-- `result.srt` / `result.vtt`：由 `segments` 生成的字幕。
+- `result.srt`：由 `segments` 生成的字幕。
+- `result.txt`：从 `result.srt` 删除序号行和时间行后派生的纯文本。
 
-所以前端下载、ZIP 打包、任务列表逻辑保持不变。
+所以前端下载、ZIP 打包、任务列表只公开 SRT 与派生 TXT。
 
 ## 管理页配置
 

@@ -11,6 +11,7 @@ from app.llm_polish import (
 )
 from app.models import JobOptions
 from app.storage import JobStorage
+from app.srt_text import write_plain_text_from_srt
 
 
 def test_llm_provider_defaults_resolve_to_openai_compatible_v1():
@@ -47,11 +48,14 @@ def test_fetch_models_and_connection_check_parse_openai_compatible_payload(monke
 
 
 def test_polish_job_outputs_creates_markdown_llm_artifact(monkeypatch, tmp_path):
+    seen_payloads = []
+
     def fake_request_json(method, url, payload, config):
         assert method == "POST"
         assert url == "http://llm.local/v1/chat/completions"
         assert payload["model"] == "local-model"
-        return {"choices": [{"message": {"content": "# 润色结果\n\n整理后的正文。"}}]}
+        seen_payloads.append(payload)
+        return {"choices": [{"message": {"content": "纠错后的正文。"}}]}
 
     monkeypatch.setattr("app.llm_polish._request_json", fake_request_json)
     storage = JobStorage(tmp_path)
@@ -61,7 +65,13 @@ def test_polish_job_outputs_creates_markdown_llm_artifact(monkeypatch, tmp_path)
         JobOptions(task_type="whisperx", model="small", llm_polish=True),
     )
     output = storage.job_dir(manifest.job_id) / "output"
-    (output / "result.txt").write_text("raw transcript", encoding="utf-8")
+    srt_path = output / "result.srt"
+    srt_path.write_text(
+        "1\n00:00:00,000 --> 00:00:01,000\nraw transcript\n\n"
+        "2\n00:00:01,000 --> 00:00:02,000\nASR mistak\n",
+        encoding="utf-8",
+    )
+    write_plain_text_from_srt(srt_path, output / "result.txt")
 
     result = polish_job_outputs(
         storage,
@@ -80,4 +90,46 @@ def test_polish_job_outputs_creates_markdown_llm_artifact(monkeypatch, tmp_path)
     artifacts = storage.discover_output_artifacts(manifest.job_id)
     by_name = {artifact.name: artifact for artifact in artifacts}
     assert by_name["llm_polished.md"].format == "markdown_llm"
-    assert (output / "llm_polished.md").read_text(encoding="utf-8").startswith("# 润色结果")
+    assert (output / "llm_polished.md").read_text(encoding="utf-8") == "纠错后的正文。\n"
+    prompt = seen_payloads[0]["messages"][1]["content"]
+    assert "raw transcript" in prompt
+    assert "ASR mistak" in prompt
+    assert "00:00:00,000" not in prompt
+    assert "\n1\n" not in f"\n{prompt}\n"
+    assert "不要总结" in prompt
+
+
+def test_pdf_polish_prompt_does_not_use_srt_language(monkeypatch, tmp_path):
+    seen_payloads = []
+
+    def fake_request_json(method, url, payload, config):
+        seen_payloads.append(payload)
+        return {"choices": [{"message": {"content": "校对后的文档。"}}]}
+
+    monkeypatch.setattr("app.llm_polish._request_json", fake_request_json)
+    storage = JobStorage(tmp_path)
+    manifest = storage.create_job(
+        BytesIO(b"%PDF"),
+        "sample.pdf",
+        JobOptions(task_type="pdf", llm_polish=True),
+    )
+    output = storage.job_dir(manifest.job_id) / "output"
+    (output / "result.md").write_text("# Title\n\nPDF text", encoding="utf-8")
+
+    result = polish_job_outputs(
+        storage,
+        manifest.job_id,
+        task_type="pdf",
+        config=LlmPolishConfig(
+            enabled=True,
+            provider="custom",
+            base_url="http://llm.local/v1",
+            model="local-model",
+        ),
+    )
+
+    assert [path.name for path in result.created_paths] == ["result_llm.md"]
+    prompt = seen_payloads[0]["messages"][1]["content"]
+    assert "原始文档提取文本" in prompt
+    assert "SRT" not in prompt
+    assert "不要总结" in prompt

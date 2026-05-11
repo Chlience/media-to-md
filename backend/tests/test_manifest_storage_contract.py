@@ -54,7 +54,7 @@ def _example_manifest(job_id="job-contract"):
             "diarize": False,
             "model_dir": None,
             "model_cache_only": False,
-            "output_formats": ["txt", "srt", "vtt", "json"],
+            "output_formats": ["srt", "txt"],
         },
         "error": None,
         "artifacts": [],

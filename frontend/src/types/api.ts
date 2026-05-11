@@ -16,8 +16,6 @@ export const taskTypePdf = 'pdf' as const;
 export type TaskType = typeof taskTypeWhisperx | typeof taskTypePdf;
 export type WhisperxBackend = 'cli' | 'openai';
 
-export const whisperxOutputFormats = ['txt', 'srt', 'vtt'] as const;
-
 export const pdfCleanupStrengthOff = 'off' as const;
 export const pdfCleanupStrengthConservative = 'conservative' as const;
 export const pdfCleanupStrengthBalanced = 'balanced' as const;
@@ -212,13 +210,9 @@ export function jobOptionsToFormFields(options: JobOptions): Record<string, stri
     };
   }
 
-  const requestedFormats = options.diarize
-    ? [...whisperxOutputFormats, 'json']
-    : [...whisperxOutputFormats];
   const fields: Record<string, string> = {
     task_type: taskTypeWhisperx,
     language: options.language === 'auto' ? 'auto' : options.language,
-    output_formats: requestedFormats.join(','),
     llm_polish: String(Boolean(options.llmPolish)),
   };
   const selectedModel = options.model?.trim();

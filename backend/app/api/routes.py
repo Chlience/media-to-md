@@ -146,7 +146,7 @@ def _normalize_whisperx_output_formats(value: str | None) -> list[str]:
     parts = [part.strip().lower() for part in value.split(",") if part.strip()]
     if not parts:
         return list(DEFAULT_OUTPUT_FORMATS)
-    allowed = {"txt", "srt", "vtt", "json"}
+    allowed = {"srt", "txt"}
     invalid = sorted(set(parts) - allowed)
     if invalid:
         raise HTTPException(

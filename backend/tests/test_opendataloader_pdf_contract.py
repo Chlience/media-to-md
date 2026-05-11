@@ -92,7 +92,7 @@ def _whisperx_manifest_payload() -> dict[str, Any]:
             "diarize": False,
             "model_dir": None,
             "model_cache_only": False,
-            "output_formats": ["txt", "srt", "vtt", "json"],
+            "output_formats": ["srt", "txt"],
         },
         "error": None,
         "artifacts": [],
@@ -120,7 +120,7 @@ def test_manifest_deserializes_current_whisperx_options():
 
     assert manifest.options.task_type == "whisperx"
     assert manifest.options.model == "small"
-    assert manifest.options.output_formats == ["txt", "srt", "vtt", "json"]
+    assert manifest.options.output_formats == ["srt", "txt"]
 
 
 def test_upload_without_task_type_defaults_to_whisperx_options(tmp_path: Path):

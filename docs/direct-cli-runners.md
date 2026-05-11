@@ -52,12 +52,13 @@ java -version
 whisperx <input-media> \
   --model <model-or-local-path> \
   --output_dir <job-output> \
-  --output_format <format> \
+  --output_format srt \
   --model_dir <cache-dir> \
   <whisperx_cli_args>
 ```
 
 公开上传页只允许用户选择语言和少量任务参数；模型、缓存和批处理等运行参数由后端配置或管理页维护。
+后端只要求 WhisperX 生成 SRT，并会把 SRT 的序号行和时间行删除后派生 `result.txt`。
 
 允许的 `whisperx_cli_args`：
 
@@ -75,7 +76,7 @@ response_format=verbose_json
 timestamp_granularities[]=segment
 ```
 
-返回的 `verbose_json` 会被写成 `result.json`，并派生出 `result.txt`、`result.srt`、`result.vtt`。
+返回的 `verbose_json` 会先转换成 `result.srt`，再删除 SRT 序号行和时间行派生 `result.txt`。
 
 OpenAI 模式只转发适合每次请求覆盖的 `whisperx_openai_args`：`batch_size`, `chunk_size`, `no_align`, `align_model`, `diarize_model`, `min_speakers`, `max_speakers`, `speaker_embeddings`。设备、模型目录、compute type 等由远端 WhisperX 服务启动参数控制。
 

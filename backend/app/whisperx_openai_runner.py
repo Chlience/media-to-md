@@ -28,6 +28,7 @@ from .runtime_progress import (
     phase_from_openai_progress,
     runtime_phase,
 )
+from .srt_text import derive_plain_text_from_srt_outputs, write_plain_text_from_srt
 from .whisperx_runner import (
     LogCallback,
     WhisperXErrorKind,
@@ -311,20 +312,10 @@ def _segments(payload: Mapping[str, Any]) -> list[Mapping[str, Any]]:
     return [segment for segment in raw_segments if isinstance(segment, Mapping)]
 
 
-def _payload_text(payload: Mapping[str, Any]) -> str:
-    text = payload.get("text")
-    if isinstance(text, str) and text.strip():
-        return text.strip()
-    return " ".join(
-        part
-        for part in (_segment_text(segment) for segment in _segments(payload))
-        if part
-    )
-
-
 def _render_srt(payload: Mapping[str, Any]) -> str:
     lines: list[str] = []
-    for index, segment in enumerate(_segments(payload), start=1):
+    index = 1
+    for segment in _segments(payload):
         text = _segment_text(segment)
         if not text:
             continue
@@ -336,22 +327,7 @@ def _render_srt(payload: Mapping[str, Any]) -> str:
                 "",
             ]
         )
-    return "\n".join(lines)
-
-
-def _render_vtt(payload: Mapping[str, Any]) -> str:
-    lines = ["WEBVTT", ""]
-    for segment in _segments(payload):
-        text = _segment_text(segment)
-        if not text:
-            continue
-        lines.extend(
-            [
-                f"{_format_timestamp(segment.get('start'), '.')} --> {_format_timestamp(segment.get('end'), '.')}",
-                text,
-                "",
-            ]
-        )
+        index += 1
     return "\n".join(lines)
 
 
@@ -361,14 +337,9 @@ def write_openai_response_artifacts(
     """Write Media-to-MD standard artifacts from an OpenAI verbose JSON payload."""
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    (output_dir / "result.json").write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-    )
-    (output_dir / "result.txt").write_text(
-        _payload_text(payload) + "\n", encoding="utf-8"
-    )
-    (output_dir / "result.srt").write_text(_render_srt(payload), encoding="utf-8")
-    (output_dir / "result.vtt").write_text(_render_vtt(payload), encoding="utf-8")
+    srt_path = output_dir / "result.srt"
+    srt_path.write_text(_render_srt(payload), encoding="utf-8")
+    write_plain_text_from_srt(srt_path, output_dir / "result.txt")
 
 
 class OpenAIWhisperXRunner:
@@ -724,6 +695,7 @@ class JobStorageOpenAIWhisperXRunner(OpenAIWhisperXRunner):
             await self.run(
                 request, on_log=record_log_event, on_progress=record_progress_event
             )
+            derive_plain_text_from_srt_outputs(request.output_dir)
         except WhisperXRunnerError as exc:
             append_progress_event(
                 self.storage,

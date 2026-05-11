@@ -59,7 +59,7 @@ class FakeRunner:
         public_formats = set(manifest.options.output_formats)
         output = storage.job_dir(job_id) / "output"
         artifacts = []
-        for fmt in ["txt", "srt", "vtt", "json"]:
+        for fmt in ["srt", "txt"]:
             path = output / f"result.{fmt}"
             path.write_text(f"dummy {fmt}", encoding="utf-8")
             if fmt not in public_formats:
@@ -150,7 +150,7 @@ def test_upload_status_config_reconstruct_from_filesystem(tmp_path):
     assert "input_duration_seconds" in status
     assert status["options"]["model"] == "small"
     assert status["options"]["model_dir"] == "/models"
-    assert status["options"]["output_formats"] == ["txt", "srt", "vtt"]
+    assert status["options"]["output_formats"] == ["srt", "txt"]
     assert set(status) >= {
         "job_id",
         "status",
@@ -679,7 +679,7 @@ def test_start_fake_runner_flow_results_and_downloads(tmp_path):
     assert results["input_filename"] == "sample.wav"
     assert results["input_size_bytes"] == 3
     assert "input_duration_seconds" in results
-    assert {a["format"] for a in results["artifacts"]} == {"txt", "srt", "vtt"}
+    assert {a["format"] for a in results["artifacts"]} == {"srt", "txt"}
     dl = client.get(f"/api/jobs/{job_id}/download/result.txt")
     assert dl.status_code == 200
     assert dl.text == "dummy txt"
@@ -693,7 +693,7 @@ def test_start_fake_runner_flow_results_and_downloads(tmp_path):
         in zip_response.headers["content-disposition"]
     )
     with zipfile.ZipFile(io.BytesIO(zip_response.content)) as archive:
-        assert set(archive.namelist()) == {"result.txt", "result.srt", "result.vtt"}
+        assert set(archive.namelist()) == {"result.srt", "result.txt"}
         assert archive.read("result.txt") == b"dummy txt"
         assert "result.json" not in archive.namelist()
 
@@ -704,8 +704,8 @@ def test_start_fake_runner_flow_results_and_downloads(tmp_path):
     assert any(event["status"] == "succeeded" for event in events)
 
 
-def test_json_artifact_is_exposed_only_when_requested(tmp_path):
-    client, runner, _ = make_client(tmp_path)
+def test_whisperx_upload_rejects_removed_json_output_format(tmp_path):
+    client, _, _ = make_client(tmp_path)
     response = client.post(
         "/api/jobs/upload",
         files={"file": ("sample.wav", b"abc", "audio/wav")},
@@ -716,24 +716,9 @@ def test_json_artifact_is_exposed_only_when_requested(tmp_path):
             "output_formats": "txt,json",
         },
     )
-    assert response.status_code == 201, response.text
-    job_id = response.json()["job_id"]
 
-    response = client.post(f"/api/jobs/{job_id}/start")
-    assert response.status_code == 202
-    for _ in range(20):
-        status = client.get(f"/api/jobs/{job_id}/status").json()
-        if status["status"] == "succeeded":
-            break
-        import time
-
-        time.sleep(0.01)
-
-    results = client.get(f"/api/jobs/{job_id}/results").json()
-
-    assert runner.started == [job_id]
-    assert {a["format"] for a in results["artifacts"]} == {"txt", "json"}
-    assert client.get(f"/api/jobs/{job_id}/download/result.json").status_code == 200
+    assert response.status_code == 400
+    assert "output_formats" in response.text
 
 
 def test_whisperx_upload_accepts_diarization_speaker_range(tmp_path):
@@ -748,7 +733,7 @@ def test_whisperx_upload_accepts_diarization_speaker_range(tmp_path):
             "diarize": "true",
             "min_speakers": "1",
             "max_speakers": "4",
-            "output_formats": "txt,srt,vtt,json",
+            "output_formats": "srt,txt",
         },
     )
 
@@ -757,7 +742,7 @@ def test_whisperx_upload_accepts_diarization_speaker_range(tmp_path):
     assert status["options"]["diarize"] is True
     assert status["options"]["min_speakers"] == 1
     assert status["options"]["max_speakers"] == 4
-    assert status["options"]["output_formats"] == ["txt", "srt", "vtt", "json"]
+    assert status["options"]["output_formats"] == ["srt", "txt"]
 
 
 def test_whisperx_upload_rejects_invalid_speaker_range(tmp_path):
@@ -838,7 +823,6 @@ def test_whisperx_job_runner_marks_success_and_discovers_artifacts(tmp_path):
         )
         assert request.output_dir == storage.job_dir(manifest.job_id) / "output"
         assert request.options.model == "small"
-        (request.output_dir / "result.txt").write_text("ok", encoding="utf-8")
         (request.output_dir / "result.srt").write_text(
             "1\n00:00:00,000 --> 00:00:01,000\nok\n", encoding="utf-8"
         )
@@ -853,6 +837,9 @@ def test_whisperx_job_runner_marks_success_and_discovers_artifacts(tmp_path):
     updated = storage.read_manifest(manifest.job_id)
     assert updated.status == JobStatus.succeeded
     assert {artifact.format for artifact in updated.artifacts} == {"txt", "srt"}
+    assert (
+        storage.job_dir(manifest.job_id) / "output" / "result.txt"
+    ).read_text(encoding="utf-8") == "ok\n"
 
 
 def test_upload_accepts_task_type_pdf(tmp_path):

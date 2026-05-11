@@ -15,7 +15,7 @@ pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient
 
 
-ALLOWED_FORMATS = {"txt", "srt", "vtt", "json"}
+ALLOWED_FORMATS = {"srt", "txt"}
 
 
 class FakeRunner:

@@ -25,9 +25,10 @@ from .runtime_progress import (
     phase_from_cli_log,
     runtime_phase,
 )
+from .srt_text import derive_plain_text_from_srt_outputs
 
 WHISPERX_COMMAND = "whisperx"
-REQUIRED_OUTPUT_FORMATS: tuple[str, ...] = ("txt", "srt", "vtt", "json")
+REQUIRED_OUTPUT_FORMATS: tuple[str, ...] = ("srt", "txt")
 ALLOWED_MODELS: frozenset[str] = frozenset(
     {
         "tiny",
@@ -238,7 +239,7 @@ def build_whisperx_argv(
         "--output_dir",
         str(output_dir),
         "--output_format",
-        "all",
+        "srt",
     ]
     if normalized.language is not None:
         argv.extend(["--language", normalized.language])
@@ -435,6 +436,7 @@ class JobStorageWhisperXRunner(WhisperXRunner):
                 job_id, "system", "开始执行 WhisperX 子进程。", status=JobStatus.running
             )
             await self.run(request, on_log=record_log_event)
+            derive_plain_text_from_srt_outputs(request.output_dir)
         except WhisperXRunnerError as exc:
             append_progress_event(
                 self.storage,

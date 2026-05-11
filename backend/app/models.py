@@ -30,7 +30,7 @@ ARTIFACT_FORMATS = {
     "jpeg",
     "jpg",
 }
-DEFAULT_OUTPUT_FORMATS = ["txt", "srt", "vtt"]
+DEFAULT_OUTPUT_FORMATS = ["srt", "txt"]
 DEFAULT_PDF_FORMATS = ["markdown", "text"]
 MARKDOWN_CLEANUP_STRENGTHS = {"off", "conservative", "balanced", "aggressive"}
 MarkdownCleanupStrength = Literal["off", "conservative", "balanced", "aggressive"]

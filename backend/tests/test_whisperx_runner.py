@@ -64,8 +64,11 @@ class WhisperXCommandBuilderTests(unittest.TestCase):
             argv[cache_only_index : cache_only_index + 2],
             ["--model_cache_only", "True"],
         )
-        self.assertIn("--output_format", argv)
-        self.assertIn("all", argv)
+        output_format_index = argv.index("--output_format")
+        self.assertEqual(
+            argv[output_format_index : output_format_index + 2],
+            ["--output_format", "srt"],
+        )
         batch_index = argv.index("--batch_size")
         self.assertEqual(argv[batch_index : batch_index + 2], ["--batch_size", "16"])
         self.assertNotIn("shell=True", " ".join(argv))
@@ -112,9 +115,9 @@ class WhisperXCommandBuilderTests(unittest.TestCase):
         self.assertEqual(argv[model_index : model_index + 2], ["--model", local_model])
 
     def test_required_output_formats_are_locked_to_manifest_allowlist(self):
-        self.assertEqual(REQUIRED_OUTPUT_FORMATS, ("txt", "srt", "vtt", "json"))
+        self.assertEqual(REQUIRED_OUTPUT_FORMATS, ("srt", "txt"))
         with self.assertRaisesRegex(WhisperXRunnerError, "Unsupported output format"):
-            validate_options(WhisperXOptions(output_formats=("txt", "log")))
+            validate_options(WhisperXOptions(output_formats=("srt", "log")))
 
     def test_env_includes_whisperx_model_dir(self):
         env = build_runner_env(
@@ -231,10 +234,11 @@ class JobStorageWhisperXRunnerTests(unittest.TestCase):
             class FakeRunner(JobStorageWhisperXRunner):
                 async def run(self, request, on_log=None):
                     request.output_dir.mkdir(parents=True, exist_ok=True)
-                    for fmt in ("txt", "srt", "vtt", "json"):
-                        (request.output_dir / f"result.{fmt}").write_text(
-                            fmt, encoding="utf-8"
-                        )
+                    (request.output_dir / "result.srt").write_text(
+                        "1\n00:00:00,000 --> 00:00:01,000\nfirst line\n\n"
+                        "2\n00:00:01,000 --> 00:00:02,000\nsecond line\n",
+                        encoding="utf-8",
+                    )
                     request.log_path.write_text("fake whisperx ok\n", encoding="utf-8")
                     return None
 
@@ -260,7 +264,13 @@ class JobStorageWhisperXRunnerTests(unittest.TestCase):
                 self.assertEqual(updated.status, JobStatus.succeeded)
                 self.assertEqual(
                     {artifact.format for artifact in updated.artifacts},
-                    {"txt", "srt", "vtt"},
+                    {"txt", "srt"},
+                )
+                self.assertEqual(
+                    (
+                        storage.job_dir(manifest.job_id) / "output" / "result.txt"
+                    ).read_text(encoding="utf-8"),
+                    "first line\n\nsecond line\n",
                 )
                 self.assertTrue(
                     all(
@@ -272,7 +282,7 @@ class JobStorageWhisperXRunnerTests(unittest.TestCase):
 
         asyncio.run(exercise())
 
-    def test_json_artifact_is_generated_but_hidden_when_not_requested(self):
+    def test_srt_artifact_is_hidden_when_only_txt_requested(self):
         async def exercise():
             from app.models import JobOptions, JobStatus
             from app.storage import JobStorage
@@ -280,10 +290,10 @@ class JobStorageWhisperXRunnerTests(unittest.TestCase):
             class FakeRunner(JobStorageWhisperXRunner):
                 async def run(self, request, on_log=None):
                     request.output_dir.mkdir(parents=True, exist_ok=True)
-                    for fmt in ("txt", "json"):
-                        (request.output_dir / f"result.{fmt}").write_text(
-                            fmt, encoding="utf-8"
-                        )
+                    (request.output_dir / "result.srt").write_text(
+                        "1\n00:00:00,000 --> 00:00:01,000\nvisible text\n",
+                        encoding="utf-8",
+                    )
                     request.log_path.write_text("fake whisperx ok\n", encoding="utf-8")
                     return None
 
@@ -303,15 +313,16 @@ class JobStorageWhisperXRunnerTests(unittest.TestCase):
                 self.assertEqual(
                     {artifact.format for artifact in updated.artifacts}, {"txt"}
                 )
-                self.assertTrue(
+                self.assertEqual(
                     (
-                        storage.job_dir(manifest.job_id) / "output" / "result.json"
-                    ).is_file()
+                        storage.job_dir(manifest.job_id) / "output" / "result.txt"
+                    ).read_text(encoding="utf-8"),
+                    "visible text\n",
                 )
 
         asyncio.run(exercise())
 
-    def test_json_artifact_is_public_when_requested(self):
+    def test_srt_and_txt_artifacts_are_public_when_requested(self):
         async def exercise():
             from app.models import JobOptions
             from app.storage import JobStorage
@@ -319,10 +330,10 @@ class JobStorageWhisperXRunnerTests(unittest.TestCase):
             class FakeRunner(JobStorageWhisperXRunner):
                 async def run(self, request, on_log=None):
                     request.output_dir.mkdir(parents=True, exist_ok=True)
-                    for fmt in ("txt", "json"):
-                        (request.output_dir / f"result.{fmt}").write_text(
-                            fmt, encoding="utf-8"
-                        )
+                    (request.output_dir / "result.srt").write_text(
+                        "1\n00:00:00,000 --> 00:00:01,000\npublic text\n",
+                        encoding="utf-8",
+                    )
                     request.log_path.write_text("fake whisperx ok\n", encoding="utf-8")
                     return None
 
@@ -331,7 +342,7 @@ class JobStorageWhisperXRunnerTests(unittest.TestCase):
                 manifest = storage.create_job(
                     io.BytesIO(b"fake audio"),
                     "input.wav",
-                    JobOptions(output_formats=["txt", "json"]),
+                    JobOptions(output_formats=["srt", "txt"]),
                 )
 
                 runner = FakeRunner(storage, WhisperXRunnerConfig(model_dir=None))
@@ -340,7 +351,7 @@ class JobStorageWhisperXRunnerTests(unittest.TestCase):
                 updated = storage.read_manifest(manifest.job_id)
                 self.assertEqual(
                     {artifact.format for artifact in updated.artifacts},
-                    {"txt", "json"},
+                    {"txt", "srt"},
                 )
 
         asyncio.run(exercise())
@@ -384,7 +395,7 @@ class JobStorageWhisperXRunnerTests(unittest.TestCase):
                 min_speakers=1,
                 max_speakers=3,
                 model_cache_only=True,
-                output_formats=["txt", "json"],
+                output_formats=["srt", "txt"],
             )
         )
 
@@ -394,7 +405,7 @@ class JobStorageWhisperXRunnerTests(unittest.TestCase):
         self.assertEqual(options.min_speakers, 1)
         self.assertEqual(options.max_speakers, 3)
         self.assertTrue(options.model_cache_only)
-        self.assertEqual(options.output_formats, ("txt", "json"))
+        self.assertEqual(options.output_formats, ("srt", "txt"))
 
     def test_from_settings_carries_backend_config_args(self):
         from app.config import Settings

@@ -26,7 +26,7 @@ def _build_command(runner, tmp_path: pathlib.Path):
                 language="en",
                 diarize=True,
                 model_cache_only=True,
-                output_formats=("txt", "srt", "vtt", "json"),
+                output_formats=("srt", "txt"),
             ),
             runner.WhisperXRunnerConfig(model_dir=model_dir),
         )
@@ -47,7 +47,7 @@ def _build_command(runner, tmp_path: pathlib.Path):
             diarize=True,
             model_dir=model_dir,
             model_cache_only=True,
-            output_formats=["txt", "srt", "vtt", "json"],
+            output_formats=["srt", "txt"],
         ),
         lambda: build_command(
             str(input_file),
@@ -67,7 +67,7 @@ def _build_command(runner, tmp_path: pathlib.Path):
                 "diarize": True,
                 "model_dir": str(model_dir),
                 "model_cache_only": True,
-                "output_formats": ["txt", "srt", "vtt", "json"],
+                "output_formats": ["srt", "txt"],
             },
         ),
     ]
@@ -106,7 +106,8 @@ def test_command_builder_uses_direct_whisperx_argv_and_model_flags(
         "--model_cache_only",
         "True",
     ]
-    assert "--output_format" in argv or "--output_format" in " ".join(argv)
+    assert "--output_format" in argv
+    assert argv[argv.index("--output_format") + 1] == "srt"
 
 
 def test_runner_source_does_not_use_shell_true():

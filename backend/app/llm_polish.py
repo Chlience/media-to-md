@@ -154,22 +154,42 @@ def polish_job_outputs(
             source_path=source_path,
             skipped_reason="文本输出为空，已跳过 LLM 润色。",
         )
-    polished = polish_text(text, config=prepared, source_name=source_path.name)
+    polished = polish_text(
+        text, config=prepared, source_name=source_path.name, task_type=task_type
+    )
     target_path = _polished_output_path(source_path, task_type=task_type)
     target_path.write_text(polished.rstrip() + "\n", encoding="utf-8")
     return LlmPolishJobResult(created_paths=(target_path,), source_path=source_path)
 
 
-def polish_text(text: str, *, config: LlmPolishConfig, source_name: str) -> str:
+def polish_text(
+    text: str,
+    *,
+    config: LlmPolishConfig,
+    source_name: str,
+    task_type: str = "generic",
+) -> str:
     prepared = _prepare_request_config(config, require_model=True, require_enabled=False)
     chunks = _split_text(text, max_chars=max(1000, prepared.chunk_chars))
     if len(chunks) == 1:
-        return _polish_chunk(chunks[0], config=prepared, source_name=source_name)
+        return _polish_chunk(
+            chunks[0],
+            config=prepared,
+            source_name=source_name,
+            task_type=task_type,
+        )
 
     polished_chunks: list[str] = []
     for index, chunk in enumerate(chunks, start=1):
         chunk_source = f"{source_name} 第 {index}/{len(chunks)} 段"
-        polished_chunks.append(_polish_chunk(chunk, config=prepared, source_name=chunk_source))
+        polished_chunks.append(
+            _polish_chunk(
+                chunk,
+                config=prepared,
+                source_name=chunk_source,
+                task_type=task_type,
+            )
+        )
     return "\n\n".join(polished_chunks)
 
 
@@ -203,28 +223,21 @@ def _prepare_request_config(
     )
 
 
-def _polish_chunk(chunk: str, *, config: LlmPolishConfig, source_name: str) -> str:
+def _polish_chunk(
+    chunk: str, *, config: LlmPolishConfig, source_name: str, task_type: str
+) -> str:
     url = _build_openai_compatible_url(config.base_url or "", "chat/completions")
     payload = {
         "model": config.model,
         "messages": [
             {
                 "role": "system",
-                "content": (
-                    "你是严谨的中文/多语言文本润色助手。只基于用户提供的内容整理表达，"
-                    "保持原意、事实、数字、专有名词、引用和说话人标签，不新增信息，不省略要点。"
-                    "输出适合阅读和后续大模型处理的 Markdown。"
-                ),
+                "content": _polish_system_prompt(task_type),
             },
             {
                 "role": "user",
-                "content": (
-                    f"请润色下面来自 {source_name} 的文本。要求：\n"
-                    "1. 保留原文语言，不强制翻译。\n"
-                    "2. 修正明显断句、重复口癖和格式问题。\n"
-                    "3. 对转写文本可补充段落和小标题，但不得改写事实。\n"
-                    "4. 如果已有 Markdown 结构，请保留并优化层级。\n\n"
-                    f"{chunk}"
+                "content": _polish_user_prompt(
+                    chunk, source_name=source_name, task_type=task_type
                 ),
             },
         ],
@@ -232,6 +245,43 @@ def _polish_chunk(chunk: str, *, config: LlmPolishConfig, source_name: str) -> s
     }
     response = _request_json("POST", url, payload, config)
     return _extract_chat_content(response)
+
+
+def _polish_system_prompt(task_type: str) -> str:
+    if task_type == "whisperx":
+        return (
+            "你是严谨的 ASR 转写纠错编辑。你的任务是识别并修正语音识别过程中"
+            "可能产生的错词、断句、标点、重复口癖和专有名词错误。保持原意、事实、"
+            "数字、引用、段落顺序和说话人标签，不新增信息，不总结，不压缩内容，不翻译。"
+            "不确定时保留原文。只输出纠错后的正文。"
+        )
+    return (
+        "你是严谨的文档校对编辑。你的任务是修正 OCR/PDF 提取文本中明显的错字、"
+        "断行、标点和结构问题。保持原意、事实、数字、引用、段落顺序和既有 Markdown 结构，"
+        "不新增信息，不总结，不压缩内容，不翻译。不确定时保留原文。只输出校对后的正文。"
+    )
+
+
+def _polish_user_prompt(chunk: str, *, source_name: str, task_type: str) -> str:
+    if task_type == "whisperx":
+        intro = f"下面是来自 {source_name} 的原始转写文本，已从 SRT 中删除序号行和时间行。"
+        action = "请进行 ASR 纠错，不要总结或改写成摘要。"
+        requirements = (
+            "1. 只修正明显由识别错误导致的问题，例如同音错词、错误断句、标点、重复口癖、专有名词。\n"
+            "2. 保留原文语言、信息密度、语义顺序和说话人标签。\n"
+            "3. 不新增事实，不删除要点，不翻译，不输出标题、摘要、要点列表，除非原文已有。\n"
+            "4. 如果无法判断是否错误，保留原句。"
+        )
+    else:
+        intro = f"下面是来自 {source_name} 的原始文档提取文本。"
+        action = "请进行校对纠错，不要总结或改写成摘要。"
+        requirements = (
+            "1. 只修正明显的 OCR/PDF 提取错误、断行、标点、空白和 Markdown 结构问题。\n"
+            "2. 保留原文语言、信息密度、语义顺序、标题层级、表格和列表结构。\n"
+            "3. 不新增事实，不删除要点，不翻译，不输出摘要或额外说明。\n"
+            "4. 如果无法判断是否错误，保留原句。"
+        )
+    return f"{intro}\n{action}要求：\n{requirements}\n\n{chunk}"
 
 
 def _request_json(
