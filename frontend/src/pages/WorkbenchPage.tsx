@@ -144,7 +144,6 @@ export function WorkbenchPage() {
   const [language, setLanguage] = useState('');
   const [cleanupStrength, setCleanupStrength] =
     useState<PdfCleanupStrength>(pdfCleanupStrengthBalanced);
-  const [llmPolish, setLlmPolish] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [job, setJob] = useState<JobStatus | null>(null);
   const [isSubmitting, setSubmitting] = useState(false);
@@ -219,12 +218,10 @@ export function WorkbenchPage() {
             ? {
                 taskType: taskTypePdf,
                 markdownCleanupStrength: cleanupStrength,
-                llmPolish,
               }
             : {
                 taskType: taskTypeWhisperx,
                 language: languageMode === 'auto' ? 'auto' : language.trim() || 'auto',
-                llmPolish,
               },
       });
       const initial: JobStatus = {
@@ -339,11 +336,6 @@ export function WorkbenchPage() {
                       disabled={languageMode === 'auto'}
                     />
                   </div>
-                  <div className="field field-full">
-                    <div className="status-note">
-                      说话人分离默认开启，由后端统一执行，不需要单独配置。
-                    </div>
-                  </div>
                 </div>
               ) : (
                 <div className="form-grid">
@@ -365,28 +357,6 @@ export function WorkbenchPage() {
                   </div>
                 </div>
               )}
-              <div style={{ height: 16 }} />
-              <div className="form-grid">
-                <div className="field">
-                  <label className="label" htmlFor="llm-polish-enabled">
-                    LLM 润色
-                  </label>
-                  <select
-                    id="llm-polish-enabled"
-                    className="select"
-                    value={String(llmPolish)}
-                    onChange={(event) => setLlmPolish(event.target.value === 'true')}
-                  >
-                    <option value="false">关闭</option>
-                    <option value="true">开启</option>
-                  </select>
-                </div>
-                <div className="field field-full">
-                  <div className="status-note">
-                    开启后会在原始转写/PDF 结果之外额外生成 LLM 润色版 Markdown；需先在管理员页面配置供应商、API Key、接口地址和模型。
-                  </div>
-                </div>
-              </div>
               {error ? (
                 <>
                   <div style={{ height: 16 }} />

@@ -363,7 +363,8 @@ class ConfigResponse(BaseModel):
     whisperx_openai_args_config: dict[str, Any] = Field(default_factory=dict)
     opendataloader_pdf_args: list[str] = Field(default_factory=list)
     opendataloader_pdf_args_config: dict[str, Any] = Field(default_factory=dict)
-    llm_polish_enabled: bool = False
+    whisperx_llm_polish_enabled: bool = False
+    pdf_llm_polish_enabled: bool = False
     llm_polish_provider: str = "openai"
     llm_polish_base_url: str | None = None
     llm_polish_api_key_configured: bool = False
@@ -430,7 +431,8 @@ class ConfigUpdateRequest(BaseModel):
     whisperx_cli_args: dict[str, Any] | None = None
     whisperx_openai_args: dict[str, Any] | None = None
     opendataloader_pdf_args: dict[str, Any] = Field(default_factory=dict)
-    llm_polish_enabled: bool = False
+    whisperx_llm_polish_enabled: bool | None = None
+    pdf_llm_polish_enabled: bool | None = None
     llm_polish_provider: str = Field(default="openai", max_length=64)
     llm_polish_base_url: str | None = Field(default=None, max_length=4096)
     llm_polish_api_key: str | None = Field(default=None, max_length=4096)

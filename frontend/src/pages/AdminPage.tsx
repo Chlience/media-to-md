@@ -19,7 +19,6 @@ import {
 import { downloadTextFile } from '../services/jobs';
 import { AdminSessionStore } from '../services/session';
 import {
-  API_BASE_URL,
   BackendConfig,
   JobEvent,
   JobStatus,
@@ -180,7 +179,8 @@ export function AdminPage() {
   const [cliWhisperxArgs, setCliWhisperxArgs] = useState('{}');
   const [openaiWhisperxArgs, setOpenaiWhisperxArgs] = useState('{}');
   const [pdfArgs, setPdfArgs] = useState('{}');
-  const [llmPolishEnabled, setLlmPolishEnabled] = useState(false);
+  const [whisperxLlmPolishEnabled, setWhisperxLlmPolishEnabled] = useState(false);
+  const [pdfLlmPolishEnabled, setPdfLlmPolishEnabled] = useState(false);
   const [llmProvider, setLlmProvider] = useState(defaultLlmProvider);
   const [llmBaseUrl, setLlmBaseUrl] = useState('');
   const [llmApiKey, setLlmApiKey] = useState('');
@@ -272,7 +272,8 @@ export function AdminPage() {
     setCliWhisperxArgs(jsonPreview(nextConfig.whisperxCliArgsConfig));
     setOpenaiWhisperxArgs(jsonPreview(nextConfig.whisperxOpenaiArgsConfig));
     setPdfArgs(jsonPreview(nextConfig.pdfArgsConfig));
-    setLlmPolishEnabled(nextConfig.llmPolishEnabled);
+    setWhisperxLlmPolishEnabled(nextConfig.whisperxLlmPolishEnabled);
+    setPdfLlmPolishEnabled(nextConfig.pdfLlmPolishEnabled);
     setLlmProvider(nextConfig.llmPolishProvider || defaultLlmProvider);
     setLlmBaseUrl(nextConfig.llmPolishBaseUrl ?? '');
     setLlmApiKey('');
@@ -463,7 +464,8 @@ export function AdminPage() {
         whisperxCliArgs: parseJsonObject(cliWhisperxArgs),
         whisperxOpenaiArgs: parseJsonObject(openaiWhisperxArgs),
         pdfArgs: parseJsonObject(pdfArgs),
-        llmPolishEnabled,
+        whisperxLlmPolishEnabled,
+        pdfLlmPolishEnabled,
         llmPolishProvider: llmProvider,
         llmPolishBaseUrl: llmBaseUrl,
         llmPolishApiKey: llmApiKey,
@@ -483,7 +485,8 @@ export function AdminPage() {
       setCliWhisperxArgs(jsonPreview(nextConfig.whisperxCliArgsConfig));
       setOpenaiWhisperxArgs(jsonPreview(nextConfig.whisperxOpenaiArgsConfig));
       setPdfArgs(jsonPreview(nextConfig.pdfArgsConfig));
-      setLlmPolishEnabled(nextConfig.llmPolishEnabled);
+      setWhisperxLlmPolishEnabled(nextConfig.whisperxLlmPolishEnabled);
+      setPdfLlmPolishEnabled(nextConfig.pdfLlmPolishEnabled);
       setLlmProvider(nextConfig.llmPolishProvider || defaultLlmProvider);
       setLlmBaseUrl(nextConfig.llmPolishBaseUrl ?? '');
       setLlmApiKey('');
@@ -772,15 +775,6 @@ export function AdminPage() {
                 </button>
               }
             >
-              <div className="form-grid">
-                <div className="field field-full">
-                  <div className="status-note">
-                    前端 API 地址为启动配置 <span className="mono">{API_BASE_URL}</span>；如需修改，
-                    请用 <span className="mono">MEDIA_TO_MD_API_BASE_URL=...</span> 重新启动或重新构建前端。
-                  </div>
-                </div>
-              </div>
-              <div style={{ height: 16 }} />
               <div className="config-grid">
                 <div className="config-card">
                   <h3>WhisperX</h3>
@@ -845,12 +839,8 @@ export function AdminPage() {
                   <h3>LLM 润色</h3>
                   <div className="config-inner">
                     <div className="form-grid">
-                      <div className="field field-full">
-                        <div className="status-note">
-                          这里配置音视频转写与 OpenDataLoader PDF 共用的润色服务；具体任务是否润色由工作台的 LLM 润色开关决定。
-                        </div>
-                      </div>
-                      <div className="field"><label className="label" htmlFor="cfg-llm-enabled">启用润色服务</label><select id="cfg-llm-enabled" className="select" value={String(llmPolishEnabled)} onChange={(event) => setLlmPolishEnabled(event.target.value === 'true')}><option value="false">关闭</option><option value="true">开启</option></select></div>
+                      <div className="field"><label className="label" htmlFor="cfg-whisperx-llm-enabled">音视频转写润色服务</label><select id="cfg-whisperx-llm-enabled" className="select" value={String(whisperxLlmPolishEnabled)} onChange={(event) => setWhisperxLlmPolishEnabled(event.target.value === 'true')}><option value="false">关闭</option><option value="true">开启</option></select></div>
+                      <div className="field"><label className="label" htmlFor="cfg-pdf-llm-enabled">PDF 润色服务</label><select id="cfg-pdf-llm-enabled" className="select" value={String(pdfLlmPolishEnabled)} onChange={(event) => setPdfLlmPolishEnabled(event.target.value === 'true')}><option value="false">关闭</option><option value="true">开启</option></select></div>
                       <div className="field"><label className="label" htmlFor="cfg-llm-provider">供应商</label><select id="cfg-llm-provider" className="select" value={llmProvider} onChange={(event) => changeLlmProvider(event.target.value)}>{llmProviders.map((provider) => <option key={provider.id} value={provider.id}>{provider.label}</option>)}</select></div>
                       <div className="field field-full"><label className="label" htmlFor="cfg-llm-base-url">接口地址</label><input id="cfg-llm-base-url" className="input mono" value={llmBaseUrl} placeholder={llmProviderDefaultBaseUrl(llmProviders, llmProvider) || 'https://host/v1'} onChange={(event) => setLlmBaseUrl(event.target.value)} /></div>
                       <div className="field"><label className="label" htmlFor="cfg-llm-api-key">API Key</label><input id="cfg-llm-api-key" className="input mono" type="password" value={llmApiKey} placeholder={llmApiKeyConfigured ? '已配置；留空保持不变' : '请输入供应商 API Key'} onChange={(event) => setLlmApiKey(event.target.value)} /></div>

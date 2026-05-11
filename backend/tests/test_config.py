@@ -27,7 +27,8 @@ def test_config_defaults_direct_cli_runtime(monkeypatch, tmp_path):
     monkeypatch.delenv("WHISPERX_OPENAI_BASE_URL", raising=False)
     monkeypatch.delenv("WHISPERX_OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("WHISPERX_OPENAI_TIMEOUT_SECONDS", raising=False)
-    monkeypatch.delenv("LLM_POLISH_ENABLED", raising=False)
+    monkeypatch.delenv("WHISPERX_LLM_POLISH_ENABLED", raising=False)
+    monkeypatch.delenv("PDF_LLM_POLISH_ENABLED", raising=False)
     monkeypatch.delenv("LLM_POLISH_PROVIDER", raising=False)
     monkeypatch.delenv("LLM_POLISH_BASE_URL", raising=False)
     monkeypatch.delenv("LLM_POLISH_API_KEY", raising=False)
@@ -58,7 +59,8 @@ def test_config_defaults_direct_cli_runtime(monkeypatch, tmp_path):
         "--image-output",
         "off",
     )
-    assert settings.llm_polish_enabled is False
+    assert settings.whisperx_llm_polish_enabled is False
+    assert settings.pdf_llm_polish_enabled is False
     assert settings.llm_polish_provider == "openai"
     assert settings.llm_polish_base_url is None
     assert settings.llm_polish_api_key is None
@@ -66,6 +68,29 @@ def test_config_defaults_direct_cli_runtime(monkeypatch, tmp_path):
     assert settings.llm_polish_timeout_seconds == 60.0
     assert settings.admin_username is None
     assert settings.admin_password is None
+
+
+def test_legacy_llm_polish_config_is_ignored(monkeypatch, tmp_path):
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        """
+{
+  "data_root": "configured-data",
+  "llm_polish_enabled": true
+}
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("WHISPERX_CONFIG_FILE", str(config_path))
+    monkeypatch.delenv("WHISPERX_LLM_POLISH_ENABLED", raising=False)
+    monkeypatch.delenv("PDF_LLM_POLISH_ENABLED", raising=False)
+
+    settings = get_settings()
+
+    assert not hasattr(settings, "llm_polish_enabled")
+    assert settings.whisperx_llm_polish_enabled is False
+    assert settings.pdf_llm_polish_enabled is False
 
 
 def test_backend_config_json_is_loaded_and_env_can_override(monkeypatch, tmp_path):
@@ -79,7 +104,8 @@ def test_backend_config_json_is_loaded_and_env_can_override(monkeypatch, tmp_pat
   "whisperx_openai_base_url": "http://localhost:9000/v1",
   "whisperx_openai_api_key": "json-key",
   "whisperx_openai_timeout_seconds": 120,
-  "llm_polish_enabled": true,
+  "whisperx_llm_polish_enabled": true,
+  "pdf_llm_polish_enabled": false,
   "llm_polish_provider": "moonshot",
   "llm_polish_base_url": "https://api.moonshot.cn/v1",
   "llm_polish_api_key": "json-llm-key",
@@ -121,7 +147,8 @@ def test_backend_config_json_is_loaded_and_env_can_override(monkeypatch, tmp_pat
     monkeypatch.delenv("WHISPERX_OPENAI_BASE_URL", raising=False)
     monkeypatch.delenv("WHISPERX_OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("WHISPERX_OPENAI_TIMEOUT_SECONDS", raising=False)
-    monkeypatch.delenv("LLM_POLISH_ENABLED", raising=False)
+    monkeypatch.delenv("WHISPERX_LLM_POLISH_ENABLED", raising=False)
+    monkeypatch.delenv("PDF_LLM_POLISH_ENABLED", raising=False)
     monkeypatch.delenv("LLM_POLISH_PROVIDER", raising=False)
     monkeypatch.delenv("LLM_POLISH_BASE_URL", raising=False)
     monkeypatch.delenv("LLM_POLISH_API_KEY", raising=False)
@@ -141,7 +168,8 @@ def test_backend_config_json_is_loaded_and_env_can_override(monkeypatch, tmp_pat
     assert settings.whisperx_openai_base_url == "http://localhost:9000/v1"
     assert settings.whisperx_openai_api_key == "json-key"
     assert settings.whisperx_openai_timeout_seconds == 120.0
-    assert settings.llm_polish_enabled is True
+    assert settings.whisperx_llm_polish_enabled is True
+    assert settings.pdf_llm_polish_enabled is False
     assert settings.llm_polish_provider == "moonshot"
     assert settings.llm_polish_base_url == "https://api.moonshot.cn/v1"
     assert settings.llm_polish_api_key == "json-llm-key"
@@ -198,7 +226,8 @@ def test_backend_config_json_is_loaded_and_env_can_override(monkeypatch, tmp_pat
     monkeypatch.setenv("WHISPERX_OPENAI_BASE_URL", "http://127.0.0.1:9100/v1")
     monkeypatch.setenv("WHISPERX_OPENAI_API_KEY", "env-key")
     monkeypatch.setenv("WHISPERX_OPENAI_TIMEOUT_SECONDS", "240")
-    monkeypatch.setenv("LLM_POLISH_ENABLED", "false")
+    monkeypatch.setenv("WHISPERX_LLM_POLISH_ENABLED", "false")
+    monkeypatch.setenv("PDF_LLM_POLISH_ENABLED", "true")
     monkeypatch.setenv("LLM_POLISH_PROVIDER", "deepseek")
     monkeypatch.setenv("LLM_POLISH_BASE_URL", "https://api.deepseek.com/v1")
     monkeypatch.setenv("LLM_POLISH_API_KEY", "env-llm-key")
@@ -226,7 +255,8 @@ def test_backend_config_json_is_loaded_and_env_can_override(monkeypatch, tmp_pat
     assert overridden.whisperx_openai_base_url == "http://127.0.0.1:9100/v1"
     assert overridden.whisperx_openai_api_key == "env-key"
     assert overridden.whisperx_openai_timeout_seconds == 240.0
-    assert overridden.llm_polish_enabled is False
+    assert overridden.whisperx_llm_polish_enabled is False
+    assert overridden.pdf_llm_polish_enabled is True
     assert overridden.llm_polish_provider == "deepseek"
     assert overridden.llm_polish_base_url == "https://api.deepseek.com/v1"
     assert overridden.llm_polish_api_key == "env-llm-key"

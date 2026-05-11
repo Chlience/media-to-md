@@ -109,7 +109,8 @@ export class WhisperXApiClient {
     whisperxCliArgs: Record<string, unknown>;
     whisperxOpenaiArgs: Record<string, unknown>;
     pdfArgs?: Record<string, unknown>;
-    llmPolishEnabled?: boolean;
+    whisperxLlmPolishEnabled?: boolean;
+    pdfLlmPolishEnabled?: boolean;
     llmPolishProvider?: string;
     llmPolishBaseUrl?: string | null;
     llmPolishApiKey?: string | null;
@@ -138,7 +139,8 @@ export class WhisperXApiClient {
         whisperx_cli_args: params.whisperxCliArgs,
         whisperx_openai_args: params.whisperxOpenaiArgs,
         opendataloader_pdf_args: params.pdfArgs ?? {},
-        llm_polish_enabled: params.llmPolishEnabled ?? false,
+        whisperx_llm_polish_enabled: params.whisperxLlmPolishEnabled ?? false,
+        pdf_llm_polish_enabled: params.pdfLlmPolishEnabled ?? false,
         llm_polish_provider: params.llmPolishProvider ?? 'openai',
         llm_polish_base_url: blankToNull(params.llmPolishBaseUrl),
         llm_polish_api_key: blankToNull(params.llmPolishApiKey),

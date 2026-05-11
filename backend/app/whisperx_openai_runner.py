@@ -579,7 +579,7 @@ class JobStorageOpenAIWhisperXRunner(OpenAIWhisperXRunner):
                     getattr(settings, "whisperx_openai_timeout_seconds", 3600.0)
                 ),
                 config_fields=config_fields,
-                llm_config=llm_config_from_settings(settings),
+                llm_config=llm_config_from_settings(settings, task_type="whisperx"),
             ),
         )
 

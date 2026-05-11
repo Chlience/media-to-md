@@ -54,13 +54,11 @@ export interface WhisperxJobOptions {
   language: string;
   model?: string | null;
   modelCacheOnly?: boolean | null;
-  llmPolish?: boolean | null;
 }
 
 export interface PdfJobOptions {
   taskType: typeof taskTypePdf;
   markdownCleanupStrength?: PdfCleanupStrength;
-  llmPolish?: boolean | null;
 }
 
 export type JobOptions = WhisperxJobOptions | PdfJobOptions;
@@ -83,7 +81,8 @@ export interface BackendConfig {
   pdfArgs: string[];
   pdfArgsConfig: Record<string, unknown>;
   nltkDataDir: string | null;
-  llmPolishEnabled: boolean;
+  whisperxLlmPolishEnabled: boolean;
+  pdfLlmPolishEnabled: boolean;
   llmPolishProvider: string;
   llmPolishBaseUrl: string | null;
   llmPolishApiKeyConfigured: boolean;
@@ -203,14 +202,12 @@ export function jobOptionsToFormFields(options: JobOptions): Record<string, stri
       task_type: taskTypePdf,
       markdown_cleanup_strength:
         options.markdownCleanupStrength ?? pdfCleanupStrengthBalanced,
-      llm_polish: String(Boolean(options.llmPolish)),
     };
   }
 
   const fields: Record<string, string> = {
     task_type: taskTypeWhisperx,
     language: options.language === 'auto' ? 'auto' : options.language,
-  llm_polish: String(Boolean(options.llmPolish)),
   };
   const selectedModel = options.model?.trim();
   if (selectedModel) fields.model = selectedModel;

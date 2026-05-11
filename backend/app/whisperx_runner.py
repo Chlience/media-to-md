@@ -394,7 +394,7 @@ class JobStorageWhisperXRunner(WhisperXRunner):
                 default_model=default_model,
                 nltk_data_dir=Path(nltk_data_dir) if nltk_data_dir else None,
                 config_args=config_args,
-                llm_config=llm_config_from_settings(settings),
+                llm_config=llm_config_from_settings(settings, task_type="whisperx"),
             ),
         )
 

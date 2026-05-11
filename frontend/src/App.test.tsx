@@ -40,12 +40,9 @@ describe('hash routing shell', () => {
     expect(screen.getByLabelText('语言代码')).toBeDisabled();
     expect(screen.getByLabelText('语言代码')).toHaveAttribute('placeholder', '默认 auto；手动可填 en、zh、ja');
     expect(screen.queryByLabelText('说话人分离')).not.toBeInTheDocument();
-    expect(screen.getByText(/说话人分离默认开启/)).toBeInTheDocument();
-    const llmPolishSelect = screen.getByLabelText('LLM 润色') as HTMLSelectElement;
-    expect(llmPolishSelect.value).toBe('false');
-    fireEvent.change(llmPolishSelect, { target: { value: 'true' } });
-    expect(llmPolishSelect.value).toBe('true');
-    expect(screen.getByText(/额外生成 LLM 润色版 Markdown/)).toBeInTheDocument();
+    expect(screen.queryByText(/说话人分离默认开启/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('LLM 润色')).not.toBeInTheDocument();
+    expect(screen.queryByText(/额外生成 LLM 润色版 Markdown/)).not.toBeInTheDocument();
     expect(screen.queryByLabelText('输出格式')).not.toBeInTheDocument();
     expect(screen.queryByDisplayValue(/output_formats=/)).not.toBeInTheDocument();
     expect(screen.queryByLabelText('最少说话人数')).not.toBeInTheDocument();
@@ -70,7 +67,10 @@ describe('hash routing shell', () => {
     expect(screen.queryByText(/时长 .*大小 3 B/)).not.toBeInTheDocument();
     const cleanupSelect = screen.getByLabelText('Markdown 清洗力度') as HTMLSelectElement;
     expect(cleanupSelect.value).toBe('balanced');
-    expect(screen.getByLabelText('LLM 润色')).toHaveValue('true');
+    fireEvent.click(screen.getByRole('button', { name: /音视频转写/ }));
+    expect(screen.queryByLabelText('LLM 润色')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /PDF 文档解析/ }));
+    expect(screen.queryByLabelText('LLM 润色')).not.toBeInTheDocument();
     expect([...cleanupSelect.options].map((option) => option.textContent)).toEqual([
       '关闭',
       '保守',
@@ -117,8 +117,8 @@ describe('hash routing shell', () => {
     const configBox = screen.getByRole('heading', { name: '后端运行配置' }).closest('section');
     expect(screen.queryByRole('heading', { name: '后端 API 配置' })).not.toBeInTheDocument();
     expect(within(configBox as HTMLElement).queryByLabelText('API Base URL')).not.toBeInTheDocument();
-    expect(within(configBox as HTMLElement).getByText(/前端 API 地址为启动配置/)).toBeInTheDocument();
-    expect(within(configBox as HTMLElement).getByText('http://localhost:8000/api')).toBeInTheDocument();
+    expect(within(configBox as HTMLElement).queryByText(/前端 API 地址为启动配置/)).not.toBeInTheDocument();
+    expect(within(configBox as HTMLElement).queryByText(/MEDIA_TO_MD_API_BASE_URL/)).not.toBeInTheDocument();
     const defaultModelInput = within(configBox as HTMLElement).getByLabelText('默认模型');
     expect(defaultModelInput).toHaveValue('small');
     fireEvent.change(defaultModelInput, { target: { value: 'medium' } });
@@ -135,7 +135,8 @@ describe('hash routing shell', () => {
     expect(within(configBox as HTMLElement).getByLabelText('Min speakers')).toBeInTheDocument();
     expect(within(configBox as HTMLElement).getByLabelText('Max speakers')).toBeInTheDocument();
     expect(within(configBox as HTMLElement).getByLabelText('Speaker embeddings')).toBeInTheDocument();
-    expect(within(configBox as HTMLElement).getByLabelText('启用润色服务')).toHaveValue('false');
+    expect(within(configBox as HTMLElement).getByLabelText('音视频转写润色服务')).toHaveValue('false');
+    expect(within(configBox as HTMLElement).getByLabelText('PDF 润色服务')).toHaveValue('false');
     expect(within(configBox as HTMLElement).getByLabelText('供应商')).toHaveValue('openai');
     expect(within(configBox as HTMLElement).getByLabelText('接口地址')).toHaveAttribute(
       'placeholder',
@@ -232,7 +233,8 @@ describe('hash routing shell', () => {
       whisperx_openai_args_config: {},
       opendataloader_pdf_args: [],
       opendataloader_pdf_args_config: {},
-      llm_polish_enabled: true,
+      whisperx_llm_polish_enabled: true,
+      pdf_llm_polish_enabled: false,
       llm_polish_provider: 'deepseek',
       llm_polish_base_url: null,
       llm_polish_api_key_configured: false,
@@ -349,7 +351,8 @@ describe('hash routing shell', () => {
               whisperx_cli_model: 'small',
               whisperx_openai_model: 'large-v2',
               whisperx_backend: 'cli',
-              llm_polish_enabled: false,
+              whisperx_llm_polish_enabled: false,
+              pdf_llm_polish_enabled: false,
               llm_polish_provider: 'openai',
               llm_polish_timeout_seconds: 60,
             });

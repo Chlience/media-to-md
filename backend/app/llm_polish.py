@@ -98,9 +98,17 @@ def resolve_llm_base_url(provider: str, base_url: str | None) -> str:
     return _normalize_openai_base_url(resolved)
 
 
-def llm_config_from_settings(settings: Any) -> LlmPolishConfig:
+def llm_config_from_settings(
+    settings: Any, *, task_type: str | None = None
+) -> LlmPolishConfig:
+    if task_type == "whisperx":
+        enabled = bool(getattr(settings, "whisperx_llm_polish_enabled", False))
+    elif task_type == "pdf":
+        enabled = bool(getattr(settings, "pdf_llm_polish_enabled", False))
+    else:
+        enabled = False
     return LlmPolishConfig(
-        enabled=bool(getattr(settings, "llm_polish_enabled", False)),
+        enabled=enabled,
         provider=normalize_llm_provider(
             getattr(settings, "llm_polish_provider", DEFAULT_LLM_PROVIDER)
         ),

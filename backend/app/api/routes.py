@@ -204,7 +204,8 @@ def _config_response(settings: Settings) -> ConfigResponse:
         whisperx_openai_args_config=dict(settings.whisperx_openai_args_config),
         opendataloader_pdf_args=opendataloader_pdf_argv,
         opendataloader_pdf_args_config=opendataloader_pdf_config,
-        llm_polish_enabled=settings.llm_polish_enabled,
+        whisperx_llm_polish_enabled=settings.whisperx_llm_polish_enabled,
+        pdf_llm_polish_enabled=settings.pdf_llm_polish_enabled,
         llm_polish_provider=settings.llm_polish_provider,
         llm_polish_base_url=settings.llm_polish_base_url,
         llm_polish_api_key_configured=bool(settings.llm_polish_api_key),
@@ -264,10 +265,15 @@ def update_config(
         )
         if not cli_model or not openai_model:
             raise ValueError("Both CLI and OpenAI WhisperX models must be configured.")
-        llm_enabled = (
-            update.llm_polish_enabled
-            if "llm_polish_enabled" in update.model_fields_set
-            else settings.llm_polish_enabled
+        whisperx_llm_enabled = (
+            update.whisperx_llm_polish_enabled
+            if "whisperx_llm_polish_enabled" in update.model_fields_set
+            else settings.whisperx_llm_polish_enabled
+        )
+        pdf_llm_enabled = (
+            update.pdf_llm_polish_enabled
+            if "pdf_llm_polish_enabled" in update.model_fields_set
+            else settings.pdf_llm_polish_enabled
         )
         llm_provider = (
             update.llm_polish_provider
@@ -301,7 +307,8 @@ def update_config(
             "whisperx_cli_args": normalized_cli_args_config,
             "whisperx_openai_args": normalized_openai_args_config,
             "opendataloader_pdf_args": normalized_pdf_args_config,
-            "llm_polish_enabled": llm_enabled,
+            "whisperx_llm_polish_enabled": bool(whisperx_llm_enabled),
+            "pdf_llm_polish_enabled": bool(pdf_llm_enabled),
             "llm_polish_provider": normalize_llm_provider(llm_provider),
             "llm_polish_base_url": llm_base_url,
             "llm_polish_model": llm_model,
@@ -461,7 +468,6 @@ async def upload_job(
     output_formats: str | None = Form(None),
     task_type: str = Form("whisperx"),
     markdown_cleanup_strength: str | None = Form(None),
-    llm_polish: bool = Form(False),
 ) -> JobCreated:
     task_type = task_type.strip().lower()
     if task_type not in {"whisperx", "pdf"}:
@@ -484,7 +490,7 @@ async def upload_job(
             )
         options = PdfJobOptions(
             markdown_cleanup_strength=cleanup_strength,
-            llm_polish=llm_polish,
+            llm_polish=settings.pdf_llm_polish_enabled,
         )
         manifest = service.create_job(file.file, file.filename or "upload", options)
         return JobCreated(job_id=manifest.job_id, status=manifest.status)
@@ -508,7 +514,7 @@ async def upload_job(
             model_cache_only=settings.model_cache_only
             if model_cache_only is None
             else model_cache_only,
-            llm_polish=llm_polish,
+            llm_polish=settings.whisperx_llm_polish_enabled,
             output_formats=_normalize_whisperx_output_formats(output_formats),
         )
     except ValueError as exc:

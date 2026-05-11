@@ -28,7 +28,8 @@
     "threads": 1,
     "hybrid": "off"
   },
-  "llm_polish_enabled": false,
+  "whisperx_llm_polish_enabled": false,
+  "pdf_llm_polish_enabled": false,
   "llm_polish_provider": "openai",
   "llm_polish_base_url": null,
   "llm_polish_api_key": null,

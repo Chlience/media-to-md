@@ -311,7 +311,7 @@ class JobStorageOpenDataLoaderPdfRunner(OpenDataLoaderPdfRunner):
                         ("-f", PDF_OUTPUT_FORMATS, "--image-output", "off"),
                     )
                 ),
-                llm_config=llm_config_from_settings(settings),
+                llm_config=llm_config_from_settings(settings, task_type="pdf"),
             ),
         )
 

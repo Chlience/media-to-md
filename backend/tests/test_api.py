@@ -35,7 +35,8 @@ LLM_PROVIDER_EXPECTED = [
 ]
 
 DEFAULT_LLM_CONFIG_EXPECTED = {
-    "llm_polish_enabled": False,
+    "whisperx_llm_polish_enabled": False,
+    "pdf_llm_polish_enabled": False,
     "llm_polish_provider": "openai",
     "llm_polish_base_url": None,
     "llm_polish_api_key_configured": False,
@@ -75,18 +76,20 @@ class FakeRunner:
         storage.update_manifest(job_id, status=JobStatus.succeeded, artifacts=artifacts)
 
 
-def make_client(tmp_path: Path):
-    settings = Settings(
-        data_root=tmp_path,
-        whisperx_model="/models/faster-whisper-large-v2",
-        whisperx_cli_model="/models/faster-whisper-large-v2",
-        whisperx_openai_model="large-v2",
-        whisperx_model_dir="/models",
-        model_cache_only=True,
-        nltk_data_dir="/models/nltk_data",
-        admin_username="admin",
-        admin_password="secret-pass",
-    )
+def make_client(tmp_path: Path, **settings_overrides):
+    settings_values = {
+        "data_root": tmp_path,
+        "whisperx_model": "/models/faster-whisper-large-v2",
+        "whisperx_cli_model": "/models/faster-whisper-large-v2",
+        "whisperx_openai_model": "large-v2",
+        "whisperx_model_dir": "/models",
+        "model_cache_only": True,
+        "nltk_data_dir": "/models/nltk_data",
+        "admin_username": "admin",
+        "admin_password": "secret-pass",
+    }
+    settings_values.update(settings_overrides)
+    settings = Settings(**settings_values)
     app = create_app(settings=settings)
     runner = FakeRunner(app)
     app.state.job_service.runner = runner
@@ -423,7 +426,8 @@ def test_admin_can_update_backend_config(monkeypatch, tmp_path):
     monkeypatch.delenv("WHISPERX_OPENAI_BASE_URL", raising=False)
     monkeypatch.delenv("WHISPERX_OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("WHISPERX_OPENAI_TIMEOUT_SECONDS", raising=False)
-    monkeypatch.delenv("LLM_POLISH_ENABLED", raising=False)
+    monkeypatch.delenv("WHISPERX_LLM_POLISH_ENABLED", raising=False)
+    monkeypatch.delenv("PDF_LLM_POLISH_ENABLED", raising=False)
     monkeypatch.delenv("LLM_POLISH_PROVIDER", raising=False)
     monkeypatch.delenv("LLM_POLISH_BASE_URL", raising=False)
     monkeypatch.delenv("LLM_POLISH_API_KEY", raising=False)
@@ -459,7 +463,8 @@ def test_admin_can_update_backend_config(monkeypatch, tmp_path):
                 "max_speakers": 4,
                 "speaker_embeddings": True,
             },
-            "llm_polish_enabled": True,
+            "whisperx_llm_polish_enabled": True,
+            "pdf_llm_polish_enabled": False,
             "llm_polish_provider": "deepseek",
             "llm_polish_base_url": "https://api.deepseek.com/v1",
             "llm_polish_api_key": "llm-key",
@@ -528,7 +533,8 @@ def test_admin_can_update_backend_config(monkeypatch, tmp_path):
             "format": "markdown,text",
             "image_output": "off",
         },
-        "llm_polish_enabled": True,
+        "whisperx_llm_polish_enabled": True,
+        "pdf_llm_polish_enabled": False,
         "llm_polish_provider": "deepseek",
         "llm_polish_base_url": "https://api.deepseek.com/v1",
         "llm_polish_api_key_configured": True,
@@ -550,7 +556,9 @@ def test_admin_can_update_backend_config(monkeypatch, tmp_path):
     assert '"diarize_model": "/models/local-pyannote"' in saved
     assert '"whisperx_backend": "openai"' in saved
     assert '"whisperx_openai_api_key": "test-key"' in saved
-    assert '"llm_polish_enabled": true' in saved
+    assert '"llm_polish_enabled"' not in saved
+    assert '"whisperx_llm_polish_enabled": true' in saved
+    assert '"pdf_llm_polish_enabled": false' in saved
     assert '"llm_polish_provider": "deepseek"' in saved
     assert '"llm_polish_api_key": "llm-key"' in saved
     assert '"llm_polish_model": "deepseek-chat"' in saved
@@ -579,6 +587,10 @@ def test_admin_can_update_backend_config(monkeypatch, tmp_path):
     assert whisperx_runner.config.llm_config.enabled is True
     assert whisperx_runner.config.llm_config.provider == "deepseek"
     assert whisperx_runner.config.llm_config.model == "deepseek-chat"
+    pdf_runner = runner.runners["pdf"]
+    assert isinstance(pdf_runner, JobStorageOpenDataLoaderPdfRunner)
+    assert pdf_runner.config.llm_config.enabled is False
+    assert pdf_runner.config.llm_config.provider == "deepseek"
 
 
 def test_admin_can_fetch_llm_models_and_check_connection(monkeypatch, tmp_path):
@@ -875,6 +887,38 @@ def test_upload_ignores_removed_diarize_form_field(tmp_path):
     assert response.status_code == 201, response.text
     status = client.get(f"/api/jobs/{response.json()['job_id']}/status").json()
     assert status["options"]["diarize"] is True
+
+
+def test_upload_uses_backend_llm_polish_flags_and_ignores_form_field(tmp_path):
+    client, _, _ = make_client(
+        tmp_path,
+        whisperx_llm_polish_enabled=True,
+        pdf_llm_polish_enabled=False,
+    )
+
+    whisperx_response = client.post(
+        "/api/jobs/upload",
+        files={"file": ("sample.wav", b"abc", "audio/wav")},
+        data={
+            "model": "small",
+            "language": "auto",
+            "llm_polish": "false",
+        },
+    )
+    assert whisperx_response.status_code == 201, whisperx_response.text
+    whisperx_status = client.get(
+        f"/api/jobs/{whisperx_response.json()['job_id']}/status"
+    ).json()
+    assert whisperx_status["options"]["llm_polish"] is True
+
+    pdf_response = client.post(
+        "/api/jobs/upload",
+        files={"file": ("paper.pdf", b"%PDF", "application/pdf")},
+        data={"task_type": "pdf", "llm_polish": "true"},
+    )
+    assert pdf_response.status_code == 201, pdf_response.text
+    pdf_status = client.get(f"/api/jobs/{pdf_response.json()['job_id']}/status").json()
+    assert pdf_status["options"]["llm_polish"] is False
 
 
 def test_upload_rejects_unknown_task_type(tmp_path):

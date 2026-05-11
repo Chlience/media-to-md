@@ -140,7 +140,8 @@ class Settings:
     whisperx_openai_args_config: dict[str, Any] = field(default_factory=dict)
     opendataloader_pdf_args: tuple[str, ...] = ()
     opendataloader_pdf_args_config: dict[str, Any] = field(default_factory=dict)
-    llm_polish_enabled: bool = False
+    whisperx_llm_polish_enabled: bool = False
+    pdf_llm_polish_enabled: bool = False
     llm_polish_provider: str = DEFAULT_LLM_PROVIDER
     llm_polish_base_url: str | None = None
     llm_polish_api_key: str | None = None
@@ -706,10 +707,16 @@ def get_settings() -> Settings:
         "whisperx_openai_timeout_seconds",
         3600.0,
     )
-    llm_polish_enabled = _bool_config(
-        os.getenv("LLM_POLISH_ENABLED")
-        if os.getenv("LLM_POLISH_ENABLED") is not None
-        else config.get("llm_polish_enabled"),
+    whisperx_llm_polish_enabled = _bool_config(
+        os.getenv("WHISPERX_LLM_POLISH_ENABLED")
+        if os.getenv("WHISPERX_LLM_POLISH_ENABLED") is not None
+        else config.get("whisperx_llm_polish_enabled"),
+        False,
+    )
+    pdf_llm_polish_enabled = _bool_config(
+        os.getenv("PDF_LLM_POLISH_ENABLED")
+        if os.getenv("PDF_LLM_POLISH_ENABLED") is not None
+        else config.get("pdf_llm_polish_enabled"),
         False,
     )
     llm_polish_provider = normalize_llm_provider(
@@ -803,7 +810,8 @@ def get_settings() -> Settings:
         whisperx_openai_args_config=whisperx_openai_args_config,
         opendataloader_pdf_args=normalize_opendataloader_pdf_args(raw_pdf_args),
         opendataloader_pdf_args_config=opendataloader_pdf_args_config,
-        llm_polish_enabled=llm_polish_enabled,
+        whisperx_llm_polish_enabled=whisperx_llm_polish_enabled,
+        pdf_llm_polish_enabled=pdf_llm_polish_enabled,
         llm_polish_provider=llm_polish_provider,
         llm_polish_base_url=llm_polish_base_url,
         llm_polish_api_key=llm_polish_api_key,
