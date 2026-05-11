@@ -125,12 +125,36 @@ FRONTEND_LOG=${MEDIA_TO_MD_FRONTEND_LOG:-${LOG_DIR}/frontend-${FRONTEND_PORT}.lo
 backend_pid=""
 frontend_pid=""
 
+start_in_process_group() {
+  local __pid_var=$1
+  local log_file=$2
+  shift 2
+  setsid "$@" >> "${log_file}" 2>&1 &
+  printf -v "${__pid_var}" '%s' "$!"
+}
+
+stop_process_group() {
+  local pid=$1
+  [[ -n "${pid}" ]] || return 0
+  kill -0 "${pid}" 2>/dev/null || return 0
+  kill -TERM "-${pid}" 2>/dev/null || kill -TERM "${pid}" 2>/dev/null || true
+}
+
+force_stop_process_group() {
+  local pid=$1
+  [[ -n "${pid}" ]] || return 0
+  kill -0 "${pid}" 2>/dev/null || return 0
+  kill -KILL "-${pid}" 2>/dev/null || kill -KILL "${pid}" 2>/dev/null || true
+}
+
 cleanup() {
   trap - INT TERM EXIT
   for pid in "${backend_pid}" "${frontend_pid}"; do
-    if [[ -n "${pid}" ]] && kill -0 "${pid}" 2>/dev/null; then
-      kill "${pid}" 2>/dev/null || true
-    fi
+    stop_process_group "${pid}"
+  done
+  sleep 1
+  for pid in "${backend_pid}" "${frontend_pid}"; do
+    force_stop_process_group "${pid}"
   done
   wait "${backend_pid}" "${frontend_pid}" 2>/dev/null || true
 }
@@ -141,18 +165,14 @@ mkdir -p "${LOG_DIR}"
 
 trap cleanup INT TERM EXIT
 
-(
-  cd "${ROOT_DIR}/backend"
-  exec uv run uvicorn app.main:app --host "${BACKEND_HOST}" --port "${BACKEND_PORT}"
-) >> "${BACKEND_LOG}" 2>&1 &
-backend_pid=$!
+start_in_process_group backend_pid "${BACKEND_LOG}" \
+  bash -c 'cd "$1"; shift; exec "$@"' bash "${ROOT_DIR}/backend" \
+  uv run uvicorn app.main:app --host "${BACKEND_HOST}" --port "${BACKEND_PORT}"
 
-(
-  cd "${ROOT_DIR}/frontend"
-  export MEDIA_TO_MD_API_BASE_URL="${API_BASE_URL}"
-  exec npm run dev -- --host "${FRONTEND_HOST}" --port "${FRONTEND_PORT}"
-) >> "${FRONTEND_LOG}" 2>&1 &
-frontend_pid=$!
+start_in_process_group frontend_pid "${FRONTEND_LOG}" \
+  env MEDIA_TO_MD_API_BASE_URL="${API_BASE_URL}" \
+  bash -c 'cd "$1"; shift; exec "$@"' bash "${ROOT_DIR}/frontend" \
+  npm run dev -- --host "${FRONTEND_HOST}" --port "${FRONTEND_PORT}"
 
 cat <<MSG
 Media-to-MD dev servers started
