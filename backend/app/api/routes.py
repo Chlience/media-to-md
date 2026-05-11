@@ -48,8 +48,8 @@ from ..models import (
     PdfJobOptions,
     JobResultsResponse,
     JobStatusResponse,
-    RuntimePhase,
 )
+from ..runtime_progress import whisperx_runtime_phase
 from ..storage import JobStorage, StorageError
 from ..whisperx_openai_runner import JobStorageOpenAIWhisperXRunner
 from ..whisperx_runner import ALLOWED_MODELS, JobStorageWhisperXRunner
@@ -108,60 +108,6 @@ def require_admin(
         raise _auth_error(exc) from exc
 
 
-_WHISPERX_PHASE_LABELS: dict[str, tuple[str, str]] = {
-    "queued": ("等待启动", "任务已创建，等待后端启动转写。"),
-    "starting": ("启动转写任务", "后端已接收任务，正在启动本地 CLI 或 OpenAI 兼容调用。"),
-    "model": ("加载模型与参数", "WhisperX 正在初始化模型、设备和语言设置。"),
-    "vad": ("语音活动检测", "正在识别音频中的有效语音片段。"),
-    "transcription": ("语音转文字", "正在把语音片段转写为文本。"),
-    "alignment": ("时间戳对齐", "正在对齐词级/片段级时间戳并整理字幕。"),
-    "diarization": ("说话人分离", "正在为片段和词级结果分配说话人标签。"),
-    "finalizing": ("整理输出文件", "转写已完成，正在写入并收集可下载产物。"),
-    "succeeded": ("已完成", "任务已成功完成，可下载输出文件。"),
-    "failed": ("失败", "任务失败，请进入管理员页面查看错误详情和日志。"),
-    "cancelled": ("已取消", "任务已取消。"),
-}
-
-
-def _phase(code: str) -> RuntimePhase:
-    label, detail = _WHISPERX_PHASE_LABELS[code]
-    return RuntimePhase(code=code, label=label, detail=detail)
-
-
-def _whisperx_runtime_phase(
-    manifest: JobManifest, storage: JobStorage
-) -> RuntimePhase | None:
-    if manifest.options.task_type != "whisperx":
-        return None
-    if manifest.status == JobStatus.queued:
-        return _phase("queued")
-    if manifest.status == JobStatus.succeeded:
-        return _phase("succeeded")
-    if manifest.status == JobStatus.failed:
-        return _phase("failed")
-    if manifest.status == JobStatus.cancelled:
-        return _phase("cancelled")
-
-    log = storage.read_log(manifest.job_id).lower()
-    if "performing diarization" in log:
-        return _phase("diarization")
-    if "performing alignment" in log:
-        return _phase("alignment")
-    if (
-        "transcript: [" in log
-        or "detected language:" in log
-        or "performing transcription" in log
-    ):
-        return _phase("transcription")
-    if "performing voice activity detection" in log:
-        return _phase("vad")
-    if "compute type" in log or "no language specified" in log:
-        return _phase("model")
-    if log.strip():
-        return _phase("starting")
-    return _phase("starting")
-
-
 def _job_status_response(
     manifest: JobManifest, storage: JobStorage, *, include_log: bool
 ) -> JobStatusResponse:
@@ -179,7 +125,7 @@ def _job_status_response(
         artifacts=manifest.artifacts,
         log_path=manifest.log_path,
         log=storage.read_log(manifest.job_id) if include_log else None,
-        runtime_phase=_whisperx_runtime_phase(manifest, storage),
+        runtime_phase=whisperx_runtime_phase(manifest, storage),
     )
 
 

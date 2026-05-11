@@ -214,16 +214,27 @@ class OpenAIWhisperXRunnerTests(unittest.TestCase):
                 response_payload = {"text": "ok", "segments": []}
                 progress_payloads = [
                     {
+                        "schemaVersion": 1,
+                        "requestId": "job-123",
                         "request_id": "job-123",
                         "stage": "transcribe",
-                        "percent": 35.0,
+                        "stageKind": "transcribe",
+                        "stageLabel": "语音转文字",
+                        "stageDetail": "正在把音频内容转写为文本。",
+                        "stagePercent": 35.0,
+                        "updatedAt": "2026-05-11T12:06:40Z",
                         "message": "Transcribing audio 40.0%.",
                         "done": False,
                     },
                     {
+                        "schemaVersion": 1,
+                        "requestId": "job-123",
                         "request_id": "job-123",
                         "stage": "complete",
-                        "percent": 100.0,
+                        "stageKind": "finalize",
+                        "stageLabel": "请求完成",
+                        "stageDetail": "WhisperX 请求已完成。",
+                        "stagePercent": 100.0,
                         "message": "Request complete.",
                         "done": True,
                     },
@@ -255,12 +266,19 @@ class OpenAIWhisperXRunnerTests(unittest.TestCase):
                                     "runtime_progress": True,
                                     "runtime_progress_header": "X-Request-ID",
                                     "runtime_progress_endpoint": "/runtime/progress/{request_id}",
+                                    "runtime_progress_protocol": {
+                                        "name": "whisperx-runtime-progress",
+                                        "version": 1,
+                                        "transports": ["polling"],
+                                        "request_id_header": "X-Progress-ID",
+                                        "snapshot_endpoint": "/api/runtime/{request_id}",
+                                    },
                                 }
                             )
                         captured["progress_urls"].append(http_request.full_url)
                         payload = progress_payloads.pop(0) if progress_payloads else {
                             "stage": "complete",
-                            "percent": 100.0,
+                            "stagePercent": 100.0,
                             "done": True,
                         }
                         return FakeResponse(payload)
@@ -283,11 +301,11 @@ class OpenAIWhisperXRunnerTests(unittest.TestCase):
                     ).run(request, on_log=lambda line: log_lines.append(line))
 
                 headers = {key.lower(): value for key, value in captured["post_headers"].items()}
-                self.assertEqual(headers.get("x-request-id"), "job-123")
+                self.assertEqual(headers.get("x-progress-id"), "job-123")
                 self.assertEqual(headers.get("authorization"), "Bearer secret")
                 self.assertTrue(
                     captured["progress_urls"][0].startswith(
-                        "http://localhost:9000/runtime/progress/job-123"
+                        "http://localhost:9000/api/runtime/job-123"
                     )
                 )
                 body = captured["post_body"].decode("utf-8", errors="replace")
@@ -296,7 +314,7 @@ class OpenAIWhisperXRunnerTests(unittest.TestCase):
                     any("WhisperX runtime progress enabled." == line for line in log_lines)
                 )
                 self.assertTrue(
-                    any("WhisperX 进度: 35.0% · transcribe" in line for line in log_lines)
+                    any("WhisperX 阶段进度: 35.0% · transcribe" in line for line in log_lines)
                 )
 
         asyncio.run(exercise())
@@ -306,7 +324,7 @@ class JobStorageOpenAIWhisperXRunnerTests(unittest.TestCase):
     def test_start_job_updates_manifest_logs_and_artifacts(self):
         async def exercise():
             class FakeRunner(JobStorageOpenAIWhisperXRunner):
-                async def run(self, request, on_log=None):
+                async def run(self, request, on_log=None, on_progress=None):
                     request.output_dir.mkdir(parents=True, exist_ok=True)
                     (request.output_dir / "result.txt").write_text(
                         "ok", encoding="utf-8"
@@ -322,6 +340,19 @@ class JobStorageOpenAIWhisperXRunnerTests(unittest.TestCase):
                     )
                     if on_log is not None:
                         await on_log("fake openai ok")
+                    if on_progress is not None:
+                        await on_progress(
+                            {
+                                "schemaVersion": 1,
+                                "stage": "transcribe",
+                                "stageKind": "transcribe",
+                                "stageLabel": "远端语音转文字",
+                                "stageDetail": "远端阶段说明",
+                                "stagePercent": 25.0,
+                                "message": "fake progress",
+                                "updatedAt": "2026-05-11T12:06:40Z",
+                            }
+                        )
                     return None
 
             with tempfile.TemporaryDirectory() as tmp:
@@ -346,6 +377,17 @@ class JobStorageOpenAIWhisperXRunnerTests(unittest.TestCase):
                 self.assertTrue(
                     any(
                         event.message == "fake openai ok"
+                        for event in storage.read_events(manifest.job_id)
+                    )
+                )
+                self.assertTrue(
+                    any(
+                        event.type == "progress"
+                        and event.data.get("code") == "transcribe"
+                        and event.data.get("label") == "远端语音转文字"
+                        and event.data.get("detail") == "远端阶段说明"
+                        and event.data.get("stage_percent") == 25.0
+                        and event.data.get("updated_at") == "2026-05-11T12:06:40Z"
                         for event in storage.read_events(manifest.job_id)
                     )
                 )

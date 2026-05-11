@@ -23,7 +23,8 @@ describe('hash routing shell', () => {
     expect(container.querySelector('.phase-current > .status-pill')).not.toBeInTheDocument();
     expect(screen.getByText('Idle')).toBeInTheDocument();
     expect(screen.getByText('待提交')).toBeInTheDocument();
-    expect(screen.getByText('语音活动检测')).toBeInTheDocument();
+    expect(screen.getAllByText('进行中').length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText('语音活动检测')).not.toBeInTheDocument();
     expect(screen.queryByText('准备')).not.toBeInTheDocument();
     expect(screen.queryByText(/轮询/)).not.toBeInTheDocument();
     expect(screen.queryByText('运行日志')).not.toBeInTheDocument();
@@ -152,6 +153,7 @@ describe('hash routing shell', () => {
     expect(screen.queryByLabelText('WhisperX args JSON')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('OpenDataLoader PDF args JSON')).not.toBeInTheDocument();
     expect(screen.getByRole('tab', { name: '音视频转写任务' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('columnheader', { name: '进度' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('tab', { name: 'PDF 文档解析任务' }));
     expect(screen.getByRole('tab', { name: 'PDF 文档解析任务' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('columnheader', { name: '清洗力度' })).toBeInTheDocument();
@@ -329,32 +331,44 @@ describe('hash routing shell', () => {
       'fetch',
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
+        const jobPayload = {
+          job_id: 'job-esc',
+          status: 'succeeded',
+          task_type: 'whisperx',
+          input_filename: 'sample.wav',
+          input_size_bytes: 3,
+          updated_at: '2026-05-10T00:00:00Z',
+          options: { task_type: 'whisperx', model: 'small', language: 'auto' },
+          runtime_phase: {
+            process: 'whisperx',
+            code: 'succeeded',
+            label: '已完成',
+            detail: '任务已成功完成，可下载输出文件。',
+            stage_percent: 100,
+            source: 'system',
+          },
+          artifacts: [
+            {
+              name: 'result.txt',
+              format: 'txt',
+              size_bytes: 32,
+              path: 'output/result.txt',
+              download_url: null,
+            },
+          ],
+        };
         if (url.endsWith('/jobs')) {
           return new Response(
             JSON.stringify({
-              jobs: [
-                {
-                  job_id: 'job-esc',
-                  status: 'succeeded',
-                  task_type: 'whisperx',
-                  input_filename: 'sample.wav',
-                  input_size_bytes: 3,
-                  updated_at: '2026-05-10T00:00:00Z',
-                  options: { task_type: 'whisperx', model: 'small', language: 'auto' },
-                  artifacts: [
-                    {
-                      name: 'result.txt',
-                      format: 'txt',
-                      size_bytes: 32,
-                      path: 'output/result.txt',
-                      download_url: null,
-                    },
-                  ],
-                },
-              ],
+              jobs: [jobPayload],
             }),
             { headers: { 'Content-Type': 'application/json' } },
           );
+        }
+        if (url.endsWith('/jobs/job-esc/status')) {
+          return new Response(JSON.stringify(jobPayload), {
+            headers: { 'Content-Type': 'application/json' },
+          });
         }
         if (url.endsWith('/admin/config')) {
           return new Response(
@@ -401,7 +415,7 @@ describe('hash routing shell', () => {
     expect(zipLink).toHaveAttribute('href', 'http://localhost:8000/api/jobs/job-esc/artifacts.zip');
     expect(screen.queryByText('result.txt')).not.toBeInTheDocument();
     expect(screen.getByText('任务运行日志')).toBeInTheDocument();
-    expect(screen.getByText('CLI运行日志')).toBeInTheDocument();
+    expect(screen.getByText('后端运行日志')).toBeInTheDocument();
     expect(screen.getByText(/first log line/)).toBeInTheDocument();
     expect(screen.getByText(/last log line/)).toBeInTheDocument();
 

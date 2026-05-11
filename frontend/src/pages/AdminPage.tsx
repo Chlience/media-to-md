@@ -1,5 +1,10 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { WhisperXApiClient } from '../api/client';
+import {
+  RuntimePhaseCompact,
+  runtimePhaseSummary,
+  runtimePercentText,
+} from '../components/RuntimeProgress';
 import { AppShell, PageHeader } from '../components/Shell';
 import {
   ArtifactZipDownload,
@@ -18,6 +23,7 @@ import {
   BackendConfig,
   JobEvent,
   JobStatus,
+  RuntimePhase,
   taskTypeLabel,
   taskTypePdf,
   taskTypeWhisperx,
@@ -95,6 +101,37 @@ function formatJsonObject(value: Record<string, unknown>): string {
   return JSON.stringify(value, null, 2);
 }
 
+function numberOrNull(value: unknown): number | null {
+  return typeof value === 'number' ? value : null;
+}
+
+function stringOrNull(value: unknown): string | null {
+  return typeof value === 'string' ? value : null;
+}
+
+function runtimePhaseFromEvent(event: JobEvent): RuntimePhase | null {
+  if (event.type !== 'progress') return null;
+  return {
+    process: stringOrNull(event.data.process),
+    code: stringOrNull(event.data.code) ?? 'progress',
+    label: stringOrNull(event.data.label) ?? '运行进度',
+    detail: stringOrNull(event.data.detail) ?? event.message,
+    stagePercent: numberOrNull(event.data.stage_percent),
+    source: stringOrNull(event.data.source),
+    updatedAt: stringOrNull(event.data.updated_at),
+  };
+}
+
+function eventTimelineText(event: JobEvent) {
+  const phase = runtimePhaseFromEvent(event);
+  if (!phase) return `${event.type}: ${event.message}`;
+  return (
+    <span>
+      progress: {phase.label} · {runtimePercentText(phase)}
+    </span>
+  );
+}
+
 export function AdminPage() {
   const [token, setToken] = useState(() => sessionStore.read()?.token ?? '');
   const [username, setUsername] = useState(() => sessionStore.read()?.username ?? 'admin');
@@ -153,7 +190,7 @@ export function AdminPage() {
     [currentPage, filteredJobs],
   );
   const isWhisperxView = taskTypeView === taskTypeWhisperx;
-  const emptyColSpan = isWhisperxView ? 10 : 7;
+  const emptyColSpan = isWhisperxView ? 11 : 7;
   const visibleModel = whisperxBackend === 'openai' ? openaiModel : cliModel;
   const visibleModelPlaceholder =
     whisperxBackend === 'openai' ? defaultOpenaiWhisperxModel : defaultWhisperxModel;
@@ -173,6 +210,9 @@ export function AdminPage() {
     if (!adminToken) return;
     const nextJobs = await api.fetchJobs({ adminToken, includeLog: false });
     setJobs(nextJobs);
+    setSelectedJob((current) =>
+      current ? nextJobs.find((job) => job.jobId === current.jobId) ?? current : current,
+    );
   };
 
   const loadConfig = async (adminToken = token) => {
@@ -211,6 +251,18 @@ export function AdminPage() {
     setSelectedLog('');
   };
 
+  const loadJobDetail = async (jobId: string, adminToken = token) => {
+    if (!adminToken) return;
+    const [status, events, log] = await Promise.all([
+      api.fetchStatus(jobId),
+      api.fetchJobEvents({ adminToken, jobId }),
+      api.fetchJobLog({ adminToken, jobId }),
+    ]);
+    setSelectedJob(status);
+    setSelectedEvents(events);
+    setSelectedLog(log);
+  };
+
   useEffect(() => {
     if (!token) return;
     void refresh(token);
@@ -233,6 +285,15 @@ export function AdminPage() {
       window.removeEventListener('keydown', closeOnEscape);
     };
   }, [selectedJob]);
+
+  useEffect(() => {
+    if (!token || !selectedJob || selectedJob.status !== 'running') return undefined;
+    const jobId = selectedJob.jobId;
+    const timer = window.setInterval(() => {
+      void loadJobDetail(jobId, token).catch((nextError) => setError(errorMessage(nextError)));
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [token, selectedJob?.jobId, selectedJob?.status]);
 
   useEffect(() => {
     if (!configNotice) return undefined;
@@ -381,12 +442,7 @@ export function AdminPage() {
     setSelectedLog('');
     if (!token) return;
     try {
-      const [events, log] = await Promise.all([
-        api.fetchJobEvents({ adminToken: token, jobId: job.jobId }),
-        api.fetchJobLog({ adminToken: token, jobId: job.jobId }),
-      ]);
-      setSelectedEvents(events);
-      setSelectedLog(log);
+      await loadJobDetail(job.jobId, token);
     } catch (nextError) {
       setError(errorMessage(nextError));
     }
@@ -681,6 +737,7 @@ export function AdminPage() {
                     {isWhisperxView ? (
                       <tr>
                         <th>状态</th>
+                        <th>进度</th>
                         <th>任务 ID</th>
                         <th>文件</th>
                         <th>时长</th>
@@ -714,6 +771,9 @@ export function AdminPage() {
                           <tr key={job.jobId}>
                             <td>
                               <StatusPill status={job.status} />
+                            </td>
+                            <td>
+                              <RuntimePhaseCompact phase={job.runtimePhase} />
                             </td>
                             <td className="job-id">{shortJobId(job.jobId)}</td>
                             <td>
@@ -880,7 +940,7 @@ export function AdminPage() {
             <div>
               <div className="eyebrow">任务详情弹窗</div>
               <h2 id="drawer-title">{selectedJob?.jobId ?? '—'}</h2>
-              <p className="small">查看完整元数据、错误详情、输出下载按钮、任务运行日志和 CLI运行日志。</p>
+              <p className="small">查看完整元数据、错误详情、输出下载按钮、任务运行日志和后端运行日志。</p>
             </div>
             <button className="btn" type="button" onClick={closeDetail}>
               关闭 <span className="kbd">Esc</span>
@@ -897,6 +957,13 @@ export function AdminPage() {
                       { label: '任务类型', value: taskTypeLabel(String(selectedJob.taskType)) },
                       { label: '文件大小', value: formatBytes(selectedJob.inputSizeBytes) },
                       { label: '状态', value: <StatusPill status={selectedJob.status} /> },
+                      {
+                        label: '当前进度',
+                        value:
+                          selectedJob.taskType === taskTypeWhisperx
+                            ? runtimePhaseSummary(selectedJob.runtimePhase)
+                            : '—',
+                      },
                       { label: '更新时间', value: formatDate(selectedJob.updatedAt) },
                       { label: '错误详情', value: selectedJob.error ?? '—' },
                     ]}
@@ -916,19 +983,19 @@ export function AdminPage() {
                     <Timeline
                       rows={selectedEvents.map((event) => ({
                         time: formatDate(event.timestamp),
-                        text: `${event.type}: ${event.message}`,
+                        text: eventTimelineText(event),
                       }))}
                     />
                   </div>
 
                   <div className="preview cli-log-panel">
                     <div className="preview-head">
-                      <strong>CLI运行日志</strong>
+                      <strong>后端运行日志</strong>
                       <button className="btn" type="button" onClick={() => void downloadLog()}>
                         下载日志
                       </button>
                     </div>
-                    <div className="cli-log-scroll" tabIndex={0} aria-label="CLI运行日志内容">
+                    <div className="cli-log-scroll" tabIndex={0} aria-label="后端运行日志内容">
                       <pre className="log">{selectedLog || '暂无日志。'}</pre>
                     </div>
                   </div>

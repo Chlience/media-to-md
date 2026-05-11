@@ -16,8 +16,13 @@ import urllib.request
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Awaitable, Mapping, Sequence
+from typing import Any, Awaitable, Callable, Mapping, Sequence
 
+from .runtime_progress import (
+    append_progress_event,
+    phase_from_openai_progress,
+    runtime_phase,
+)
 from .whisperx_runner import (
     LogCallback,
     WhisperXErrorKind,
@@ -28,6 +33,8 @@ from .whisperx_runner import (
     options_from_job_options,
     validate_options,
 )
+
+ProgressCallback = Callable[[Mapping[str, Any]], Awaitable[None] | None]
 
 _OPENAI_CONFIG_FIELD_NAMES: frozenset[str] = frozenset(
     {
@@ -365,7 +372,10 @@ class OpenAIWhisperXRunner:
         self.config = config
 
     async def run(
-        self, request: OpenAIWhisperXRunRequest, on_log: LogCallback | None = None
+        self,
+        request: OpenAIWhisperXRunRequest,
+        on_log: LogCallback | None = None,
+        on_progress: ProgressCallback | None = None,
     ) -> OpenAIWhisperXRunResult:
         if not self.config.base_url:
             raise WhisperXRunnerError(
@@ -383,7 +393,7 @@ class OpenAIWhisperXRunner:
             await asyncio.to_thread(
                 self._detect_runtime_progress, self.config.base_url, request_id
             )
-            if on_log is not None
+            if on_log is not None or on_progress is not None
             else None
         )
         extra_headers: dict[str, str] = {}
@@ -391,6 +401,17 @@ class OpenAIWhisperXRunner:
             header_name = progress.get("header") or "X-Request-ID"
             extra_headers[header_name] = request_id
             await self._log(request, on_log, "WhisperX runtime progress enabled.")
+        elif on_progress is not None:
+            await _maybe_await(
+                on_progress(
+                    {
+                        "stage": "remote_processing",
+                        "stagePercent": None,
+                        "message": "OpenAI 兼容服务未提供运行时阶段进度。",
+                        "done": False,
+                    }
+                )
+            )
 
         post_task = asyncio.create_task(
             asyncio.to_thread(
@@ -406,6 +427,7 @@ class OpenAIWhisperXRunner:
                 self._poll_runtime_progress_until_done(
                     request,
                     on_log,
+                    on_progress,
                     progress["url"],
                     post_task,
                 )
@@ -470,10 +492,20 @@ class OpenAIWhisperXRunner:
             return None
         if not isinstance(payload, Mapping) or payload.get("runtime_progress") is not True:
             return None
-        header = payload.get("runtime_progress_header")
+        protocol = payload.get("runtime_progress_protocol")
+        protocol_payload = protocol if isinstance(protocol, Mapping) else {}
+        header = (
+            protocol_payload.get("request_id_header")
+            or protocol_payload.get("runtime_progress_header")
+            or payload.get("runtime_progress_header")
+        )
         if not isinstance(header, str) or not header.strip():
             header = "X-Request-ID"
-        endpoint_template = payload.get("runtime_progress_endpoint")
+        endpoint_template = (
+            protocol_payload.get("snapshot_endpoint")
+            or protocol_payload.get("runtime_progress_endpoint")
+            or payload.get("runtime_progress_endpoint")
+        )
         if isinstance(endpoint_template, str) and "{request_id}" in endpoint_template:
             progress_url = build_openai_runtime_progress_url_from_template(
                 base_url, endpoint_template, request_id
@@ -489,6 +521,7 @@ class OpenAIWhisperXRunner:
         self,
         request: OpenAIWhisperXRunRequest,
         on_log: LogCallback | None,
+        on_progress: ProgressCallback | None,
         progress_url: str,
         post_task: asyncio.Task[dict[str, Any]],
     ) -> None:
@@ -497,6 +530,8 @@ class OpenAIWhisperXRunner:
             progress = await asyncio.to_thread(self._get_runtime_progress, progress_url)
             if progress is not None and _should_log_runtime_progress(progress, last_logged):
                 await self._log(request, on_log, _format_runtime_progress_line(progress))
+                if on_progress is not None:
+                    await _maybe_await(on_progress(progress))
                 last_logged = progress
             if post_task.done() or (progress is not None and bool(progress.get("done"))):
                 return
@@ -664,8 +699,33 @@ class JobStorageOpenAIWhisperXRunner(OpenAIWhisperXRunner):
                 "开始调用 WhisperX OpenAI 兼容服务。",
                 status=JobStatus.running,
             )
-            await self.run(request, on_log=record_log_event)
+
+            async def record_progress_event(progress: Mapping[str, Any]) -> None:
+                append_progress_event(
+                    self.storage,
+                    job_id,
+                    phase_from_openai_progress(progress, manifest.options),
+                    JobStatus.running,
+                )
+
+            append_progress_event(
+                self.storage,
+                job_id,
+                runtime_phase("starting", manifest.options, source="openai"),
+                JobStatus.running,
+            )
+            await self.run(
+                request, on_log=record_log_event, on_progress=record_progress_event
+            )
         except WhisperXRunnerError as exc:
+            append_progress_event(
+                self.storage,
+                job_id,
+                runtime_phase(
+                    "failed", manifest.options, detail=exc.message, source="openai"
+                ),
+                JobStatus.failed,
+            )
             self.storage.append_log(job_id, exc.message)
             self.storage.update_manifest(
                 job_id, status=JobStatus.failed, error=exc.message
@@ -675,10 +735,24 @@ class JobStorageOpenAIWhisperXRunner(OpenAIWhisperXRunner):
             Exception
         ) as exc:  # pragma: no cover - defensive background-task boundary
             message = f"WhisperX OpenAI runner failed unexpectedly: {exc}"
+            append_progress_event(
+                self.storage,
+                job_id,
+                runtime_phase(
+                    "failed", manifest.options, detail=message, source="openai"
+                ),
+                JobStatus.failed,
+            )
             self.storage.append_log(job_id, message)
             self.storage.update_manifest(job_id, status=JobStatus.failed, error=message)
             return
 
+        append_progress_event(
+            self.storage,
+            job_id,
+            runtime_phase("finalize", manifest.options, source="openai"),
+            JobStatus.running,
+        )
         public_formats = set(request.options.output_formats)
         artifacts = [
             artifact
@@ -687,6 +761,14 @@ class JobStorageOpenAIWhisperXRunner(OpenAIWhisperXRunner):
         ]
         self.storage.update_manifest(
             job_id, status=JobStatus.succeeded, error=None, artifacts=artifacts
+        )
+        append_progress_event(
+            self.storage,
+            job_id,
+            runtime_phase(
+                "succeeded", manifest.options, source="openai", stage_percent=100.0
+            ),
+            JobStatus.succeeded,
         )
 
     async def enqueue(self, job_id: str) -> None:
@@ -702,9 +784,12 @@ def _safe_field_summary(fields: Sequence[tuple[str, str]]) -> str:
     )
 
 
-def _runtime_progress_percent(progress: Mapping[str, Any]) -> float | None:
+def _runtime_progress_stage_percent(progress: Mapping[str, Any]) -> float | None:
+    raw = progress.get("stagePercent")
+    if raw is None:
+        raw = progress.get("stage_percent")
     try:
-        return float(progress.get("percent"))
+        return float(raw)
     except (TypeError, ValueError):
         return None
 
@@ -712,11 +797,11 @@ def _runtime_progress_percent(progress: Mapping[str, Any]) -> float | None:
 def _format_runtime_progress_line(progress: Mapping[str, Any]) -> str:
     stage = str(progress.get("stage") or "processing")
     message = str(progress.get("message") or "").strip()
-    percent = _runtime_progress_percent(progress)
-    if percent is None:
+    stage_percent = _runtime_progress_stage_percent(progress)
+    if stage_percent is None:
         prefix = f"WhisperX 进度: {stage}"
     else:
-        prefix = f"WhisperX 进度: {percent:.1f}% · {stage}"
+        prefix = f"WhisperX 阶段进度: {stage_percent:.1f}% · {stage}"
     return f"{prefix} · {message}" if message else prefix
 
 
@@ -729,8 +814,8 @@ def _should_log_runtime_progress(
         return True
     if progress.get("stage") != last_logged.get("stage"):
         return True
-    current_percent = _runtime_progress_percent(progress)
-    previous_percent = _runtime_progress_percent(last_logged)
-    if current_percent is None or previous_percent is None:
+    current_stage_percent = _runtime_progress_stage_percent(progress)
+    previous_stage_percent = _runtime_progress_stage_percent(last_logged)
+    if current_stage_percent is None or previous_stage_percent is None:
         return False
-    return current_percent - previous_percent >= 5.0
+    return current_stage_percent - previous_stage_percent >= 5.0

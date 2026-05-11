@@ -209,9 +209,13 @@ def test_public_status_exposes_safe_whisperx_runtime_phase(tmp_path):
     assert response.status_code == 200
     payload = response.json()
     assert payload["runtime_phase"] == {
-        "code": "transcription",
+        "process": "whisperx",
+        "code": "transcribe",
         "label": "语音转文字",
-        "detail": "正在把语音片段转写为文本。",
+        "detail": "正在把音频内容转写为文本。",
+        "stage_percent": None,
+        "source": "cli",
+        "updated_at": None,
     }
     assert payload["log"] is None
     assert "Performing transcription" not in response.text

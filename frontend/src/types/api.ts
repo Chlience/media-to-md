@@ -114,16 +114,20 @@ export interface Artifact {
 
 export interface JobEvent {
   timestamp: string;
-  type: 'created' | 'status' | 'log' | 'artifact' | 'error' | 'system' | string;
+  type: 'created' | 'status' | 'log' | 'artifact' | 'error' | 'system' | 'progress' | string;
   message: string;
   status?: JobStatusValue | null;
   data: Record<string, unknown>;
 }
 
 export interface RuntimePhase {
+  process?: string | null;
   code: string;
   label: string;
   detail: string;
+  stagePercent?: number | null;
+  source?: string | null;
+  updatedAt?: string | null;
 }
 
 export interface JobStatus {

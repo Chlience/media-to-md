@@ -137,9 +137,13 @@ export function parseJobEvent(json: unknown): JobEvent {
 export function parseRuntimePhase(json: unknown): RuntimePhase | null {
   if (!isRecord(json)) return null;
   return {
+    process: asNullableString(json.process),
     code: asString(json.code),
     label: asString(json.label),
     detail: asString(json.detail),
+    stagePercent: asNumber(json.stage_percent),
+    source: asNullableString(json.source),
+    updatedAt: asNullableString(json.updated_at),
   };
 }
 

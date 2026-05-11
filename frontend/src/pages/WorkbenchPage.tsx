@@ -1,5 +1,9 @@
-import { DragEvent, ReactNode, useEffect, useRef, useState } from 'react';
+import { DragEvent, useEffect, useRef, useState } from 'react';
 import { WhisperXApiClient, UploadableFile } from '../api/client';
+import {
+  RuntimeProgressBar,
+  runtimePercentText,
+} from '../components/RuntimeProgress';
 import { AppShell, PageHeader } from '../components/Shell';
 import {
   ArtifactZipDownload,
@@ -41,85 +45,69 @@ function parseOptionalSpeakerCount(value: string, label: string): number | null 
   return parsed;
 }
 
-const whisperxPhaseSteps = [
-  {
-    code: 'queued',
-    label: '等待启动',
-    detail: '任务已创建，等待后端启动转写。',
-  },
-  {
-    code: 'starting',
-    label: '启动转写任务',
-    detail: '启动本地 CLI 或调用 OpenAI 兼容 WhisperX 服务。',
-  },
-  {
-    code: 'model',
-    label: '加载模型与参数',
-    detail: '初始化设备、模型、缓存和语言设置。',
-  },
-  {
-    code: 'vad',
-    label: '语音活动检测',
-    detail: '识别音频中的有效语音片段。',
-  },
-  {
-    code: 'transcription',
-    label: '语音转文字',
-    detail: '持续生成转录文本片段。',
-  },
-  {
-    code: 'alignment',
-    label: '时间戳对齐',
-    detail: '执行 alignment，整理字幕时间戳。',
-  },
-  {
-    code: 'diarization',
-    label: '说话人分离',
-    detail: '为转写片段分配 SPEAKER 标签。',
-  },
-  {
-    code: 'finalizing',
-    label: '整理输出文件',
-    detail: '收集 txt、srt、vtt 等下载产物。',
-  },
-  {
-    code: 'succeeded',
-    label: '已完成',
-    detail: '任务成功结束，可下载结果。',
-  },
-] as const;
-
-const phaseOrder: Map<string, number> = new Map(
-  whisperxPhaseSteps.map((step, index) => [step.code, index]),
-);
-
 function resolveWhisperxPhase(job: JobStatus | null) {
   if (!job) {
     return {
+      process: 'whisperx',
       code: 'idle',
       label: '待提交',
       detail: '选择音视频文件后上传并启动转写。',
+      stagePercent: null,
     };
   }
   if (job.runtimePhase) return job.runtimePhase;
-  if (job.status === 'queued') return whisperxPhaseSteps[0];
-  if (job.status === 'running') return whisperxPhaseSteps[1];
-  if (job.status === 'succeeded') return whisperxPhaseSteps[whisperxPhaseSteps.length - 1];
+  if (job.status === 'queued') {
+    return {
+      process: 'whisperx',
+      code: 'queued',
+      label: '等待启动',
+      detail: '任务已创建，等待后端启动转写。',
+      stagePercent: null,
+    };
+  }
+  if (job.status === 'running') {
+    return {
+      process: 'whisperx',
+      code: 'starting',
+      label: '启动转写任务',
+      detail: '后端已接收任务，正在启动本地 CLI 或 OpenAI 兼容调用。',
+      stagePercent: null,
+    };
+  }
+  if (job.status === 'succeeded') {
+    return {
+      process: 'whisperx',
+      code: 'succeeded',
+      label: '已完成',
+      detail: '任务成功结束，可下载结果。',
+      stagePercent: 100,
+    };
+  }
   if (job.status === 'failed') {
     return {
+      process: 'whisperx',
       code: 'failed',
       label: '失败',
       detail: '任务失败，请进入管理员页面查看错误详情和日志。',
+      stagePercent: null,
     };
   }
   if (job.status === 'cancelled') {
-    return { code: 'cancelled', label: '已取消', detail: '任务已取消。' };
+    return {
+      process: 'whisperx',
+      code: 'cancelled',
+      label: '已取消',
+      detail: '任务已取消。',
+      stagePercent: null,
+    };
   }
-  return { code: String(job.status), label: String(job.status), detail: '等待后端返回最新状态。' };
-}
-
-function PhaseBadge({ children, tone }: { children: ReactNode; tone: 'done' | 'active' | 'pending' }) {
-  return <span className={`phase-badge phase-${tone}`}>{children}</span>;
+  return {
+    process: 'whisperx',
+    code: String(job.status),
+    label: String(job.status),
+    detail: '等待后端返回最新状态。',
+    stagePercent: null,
+  };
 }
 
 function fileInfoLabel(job: JobStatus | null, file: File | null): string {
@@ -136,7 +124,6 @@ function fileInfoLabel(job: JobStatus | null, file: File | null): string {
 
 function WhisperxPhaseModule({ job }: { job: JobStatus | null }) {
   const phase = resolveWhisperxPhase(job);
-  const currentIndex = phaseOrder.get(phase.code) ?? -1;
 
   return (
     <div className="phase-module" aria-label="音视频转写当前状态">
@@ -145,28 +132,11 @@ function WhisperxPhaseModule({ job }: { job: JobStatus | null }) {
           <div className="phase-eyebrow">音视频转写当前状态</div>
           <h3>{phase.label}</h3>
           <p>{phase.detail}</p>
+          <div className="phase-meta">
+            <span>{runtimePercentText(phase)}</span>
+          </div>
         </div>
-      </div>
-      <div className="phase-list">
-        {whisperxPhaseSteps.map((step, index) => {
-          const tone =
-            currentIndex < 0
-              ? 'pending'
-              : index < currentIndex
-                ? 'done'
-                : index === currentIndex
-                  ? 'active'
-                  : 'pending';
-          return (
-            <div className={`phase-step phase-step-${tone}`} key={step.code}>
-              <PhaseBadge tone={tone}>{index + 1}</PhaseBadge>
-              <div>
-                <div className="phase-step-title">{step.label}</div>
-                <div className="small">{step.detail}</div>
-              </div>
-            </div>
-          );
-        })}
+        <RuntimeProgressBar phase={phase} />
       </div>
     </div>
   );

@@ -265,9 +265,13 @@ class JobDeleted(BaseModel):
 
 
 class RuntimePhase(BaseModel):
+    process: str = "whisperx"
     code: str
     label: str
     detail: str
+    stage_percent: float | None = Field(default=None, ge=0, le=100)
+    source: str | None = None
+    updated_at: str | None = None
 
 
 class JobStatusResponse(BaseModel):
@@ -293,7 +297,7 @@ class JobListResponse(BaseModel):
 
 class JobEvent(BaseModel):
     timestamp: str
-    type: Literal["created", "status", "log", "artifact", "error", "system"]
+    type: Literal["created", "status", "log", "artifact", "error", "system", "progress"]
     message: str
     status: JobStatus | None = None
     data: dict[str, Any] = Field(default_factory=dict)

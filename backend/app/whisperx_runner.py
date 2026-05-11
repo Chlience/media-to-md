@@ -15,6 +15,12 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Awaitable, Callable, Mapping
 
+from .runtime_progress import (
+    append_progress_event,
+    phase_from_cli_log,
+    runtime_phase,
+)
+
 WHISPERX_COMMAND = "whisperx"
 REQUIRED_OUTPUT_FORMATS: tuple[str, ...] = ("txt", "srt", "vtt", "json")
 ALLOWED_MODELS: frozenset[str] = frozenset(
@@ -405,13 +411,32 @@ class JobStorageWhisperXRunner(WhisperXRunner):
                 self.storage.append_event(
                     job_id, "log", clean, status=JobStatus.running
                 )
+                phase = phase_from_cli_log(clean, manifest.options)
+                if phase is not None:
+                    append_progress_event(
+                        self.storage, job_id, phase, JobStatus.running
+                    )
 
         try:
+            append_progress_event(
+                self.storage,
+                job_id,
+                runtime_phase("starting", manifest.options, source="cli"),
+                JobStatus.running,
+            )
             self.storage.append_event(
                 job_id, "system", "开始执行 WhisperX 子进程。", status=JobStatus.running
             )
             await self.run(request, on_log=record_log_event)
         except WhisperXRunnerError as exc:
+            append_progress_event(
+                self.storage,
+                job_id,
+                runtime_phase(
+                    "failed", manifest.options, detail=exc.message, source="cli"
+                ),
+                JobStatus.failed,
+            )
             self.storage.append_log(job_id, exc.message)
             self.storage.update_manifest(
                 job_id, status=JobStatus.failed, error=exc.message
@@ -421,10 +446,22 @@ class JobStorageWhisperXRunner(WhisperXRunner):
             Exception
         ) as exc:  # pragma: no cover - defensive background-task boundary
             message = f"WhisperX runner failed unexpectedly: {exc}"
+            append_progress_event(
+                self.storage,
+                job_id,
+                runtime_phase("failed", manifest.options, detail=message, source="cli"),
+                JobStatus.failed,
+            )
             self.storage.append_log(job_id, message)
             self.storage.update_manifest(job_id, status=JobStatus.failed, error=message)
             return
 
+        append_progress_event(
+            self.storage,
+            job_id,
+            runtime_phase("finalize", manifest.options, source="cli"),
+            JobStatus.running,
+        )
         public_formats = set(request.options.output_formats)
         artifacts = [
             artifact
@@ -433,6 +470,14 @@ class JobStorageWhisperXRunner(WhisperXRunner):
         ]
         self.storage.update_manifest(
             job_id, status=JobStatus.succeeded, error=None, artifacts=artifacts
+        )
+        append_progress_event(
+            self.storage,
+            job_id,
+            runtime_phase(
+                "succeeded", manifest.options, source="cli", stage_percent=100.0
+            ),
+            JobStatus.succeeded,
         )
 
     async def enqueue(self, job_id: str) -> None:
