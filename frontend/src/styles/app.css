@@ -763,10 +763,7 @@ button.active.filter { background: var(--fg); border-color: var(--fg); color: #f
 .dropzone input[type="file"] { display: none; }
 .phase-module { display: grid; gap: 12px; }
 .phase-current {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 16px;
+  display: block;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--canvas-subtle);
@@ -774,17 +771,18 @@ button.active.filter { background: var(--fg); border-color: var(--fg); color: #f
 }
 .phase-current h3 { margin: 2px 0 6px; font-size: 18px; }
 .phase-current p { margin: 0; color: var(--muted); }
-.phase-meta {
+.phase-progress-label {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  align-items: center;
+  white-space: nowrap;
   margin-top: 10px;
   color: var(--muted);
   font-size: 12px;
   font-weight: 700;
 }
 .runtime-progress {
-  min-width: min(220px, 40%);
+  width: 100%;
+  margin-top: 6px;
   display: grid;
   align-content: center;
   gap: 6px;

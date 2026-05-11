@@ -2,7 +2,7 @@ import type { RuntimePhase } from '../types/api';
 
 export function runtimePercentText(phase: RuntimePhase | null | undefined): string {
   if (phase?.stagePercent === null || phase?.stagePercent === undefined) return '进行中';
-  return `阶段 ${phase.stagePercent.toFixed(1)}%`;
+  return `当前阶段进度：${phase.stagePercent.toFixed(1)}%`;
 }
 
 export function runtimePhaseSummary(phase: RuntimePhase | null | undefined): string {
@@ -10,10 +10,16 @@ export function runtimePhaseSummary(phase: RuntimePhase | null | undefined): str
   return `${phase.label} · ${runtimePercentText(phase)}`;
 }
 
-export function RuntimeProgressBar({ phase }: { phase: RuntimePhase | null | undefined }) {
+export function RuntimeProgressBar({
+  phase,
+  showText = true,
+}: {
+  phase: RuntimePhase | null | undefined;
+  showText?: boolean;
+}) {
   const value = phase?.stagePercent;
   if (value === null || value === undefined) {
-    return <div className="runtime-progress-text">当前阶段未提供百分比，显示为进行中。</div>;
+    return showText ? <div className="runtime-progress-text">进行中</div> : null;
   }
   const width = `${Math.max(0, Math.min(value, 100))}%`;
   return (
@@ -21,7 +27,7 @@ export function RuntimeProgressBar({ phase }: { phase: RuntimePhase | null | und
       <div className="runtime-progress-track">
         <div className="runtime-progress-fill" style={{ width }} />
       </div>
-      <div className="runtime-progress-text">{runtimePercentText(phase)}</div>
+      {showText ? <div className="runtime-progress-text">{runtimePercentText(phase)}</div> : null}
     </div>
   );
 }

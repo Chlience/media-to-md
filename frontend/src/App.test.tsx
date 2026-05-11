@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { App, getHashRoute } from './App';
+import { MAX_UPLOAD_SIZE_BYTES } from './config/upload';
 
 describe('hash routing shell', () => {
   afterEach(() => {
@@ -32,17 +33,16 @@ describe('hash routing shell', () => {
     expect(screen.queryByText('结果说明')).not.toBeInTheDocument();
     expect(screen.queryByText(/普通上传页只暴露必要参数/)).not.toBeInTheDocument();
     expect(screen.getByText('从音视频文件中提取字幕与转写文本')).toBeInTheDocument();
-    expect(screen.getByText('接受常见的音频/视频文件。')).toBeInTheDocument();
+    expect(screen.getByText(/接受常见的音频\/视频文件，单个文件不超过/)).toBeInTheDocument();
     expect(screen.queryByText(/audio\/\*|video\/\*/)).not.toBeInTheDocument();
     const languageModeSelect = screen.getByLabelText('语言识别') as HTMLSelectElement;
     expect(languageModeSelect.value).toBe('auto');
     expect(screen.getByLabelText('语言代码')).toBeDisabled();
     expect(screen.getByLabelText('语言代码')).toHaveAttribute('placeholder', '默认 auto；手动可填 en、zh、ja');
     const diarizeSelect = screen.getByLabelText('说话人分离') as HTMLSelectElement;
-    expect(diarizeSelect.value).toBe('false');
-    expect(screen.getByDisplayValue('output_formats=txt,srt,vtt')).toBeInTheDocument();
-    fireEvent.change(diarizeSelect, { target: { value: 'true' } });
-    expect(screen.getByDisplayValue('output_formats=txt,srt,vtt,json')).toBeInTheDocument();
+    expect(diarizeSelect.value).toBe('true');
+    expect(screen.queryByLabelText('输出格式')).not.toBeInTheDocument();
+    expect(screen.queryByDisplayValue(/output_formats=/)).not.toBeInTheDocument();
     expect(screen.getByLabelText('最少说话人数')).not.toBeDisabled();
     expect(screen.getByLabelText('最多说话人数')).not.toBeDisabled();
     const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
@@ -54,7 +54,7 @@ describe('hash routing shell', () => {
     expect(screen.queryByText(/类型 audio\/mpeg/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /PDF 文档解析/ }));
     expect(screen.getByText('将 PDF 转换为适合大模型处理的 Markdown/TXT')).toBeInTheDocument();
-    expect(screen.getByText('接受常见的 PDF 文档。')).toBeInTheDocument();
+    expect(screen.getByText(/接受常见的 PDF 文档，单个文件不超过/)).toBeInTheDocument();
     const pdfFileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
     const pdfFile = new File(['pdf'], 'paper.pdf', { type: 'application/pdf' });
     fireEvent.change(pdfFileInput, {
@@ -75,6 +75,24 @@ describe('hash routing shell', () => {
     expect(screen.getByRole('button', { name: '上传并启动任务' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Artifacts 下载' })).toBeInTheDocument();
     expect(screen.getByText(/artifacts.zip/)).toBeInTheDocument();
+  });
+
+  it('rejects files larger than the frontend upload limit before submission', () => {
+    const { container } = render(<App />);
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const oversizedFile = new File(['x'], 'too-large.mp4', { type: 'video/mp4' });
+    Object.defineProperty(oversizedFile, 'size', {
+      configurable: true,
+      value: MAX_UPLOAD_SIZE_BYTES + 1024 * 1024,
+    });
+
+    fireEvent.change(fileInput, {
+      target: { files: { 0: oversizedFile, length: 1, item: () => oversizedFile } },
+    });
+
+    expect(screen.getByText(/文件超过最大上传限制/)).toBeInTheDocument();
+    expect(screen.getByText('尚未选择文件')).toBeInTheDocument();
+    expect(screen.queryByText('too-large.mp4')).not.toBeInTheDocument();
   });
 
   it('renders admin for /#/admin without browser-history routing', () => {

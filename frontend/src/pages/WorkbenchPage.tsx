@@ -4,6 +4,7 @@ import {
   RuntimeProgressBar,
   runtimePercentText,
 } from '../components/RuntimeProgress';
+import { MAX_UPLOAD_SIZE_BYTES } from '../config/upload';
 import { AppShell, PageHeader } from '../components/Shell';
 import {
   ArtifactZipDownload,
@@ -33,6 +34,11 @@ function fileToUploadable(file: File): UploadableFile {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function fileSizeLimitError(file: File): string | null {
+  if (file.size <= MAX_UPLOAD_SIZE_BYTES) return null;
+  return `文件超过最大上传限制：最大 ${formatBytes(MAX_UPLOAD_SIZE_BYTES)}，当前 ${formatBytes(file.size)}。`;
 }
 
 function parseOptionalSpeakerCount(value: string, label: string): number | null {
@@ -128,15 +134,13 @@ function WhisperxPhaseModule({ job }: { job: JobStatus | null }) {
   return (
     <div className="phase-module" aria-label="音视频转写当前状态">
       <div className="phase-current">
-        <div>
+        <div className="phase-content">
           <div className="phase-eyebrow">音视频转写当前状态</div>
           <h3>{phase.label}</h3>
           <p>{phase.detail}</p>
-          <div className="phase-meta">
-            <span>{runtimePercentText(phase)}</span>
-          </div>
+          <div className="phase-progress-label">{runtimePercentText(phase)}</div>
+          <RuntimeProgressBar phase={phase} showText={false} />
         </div>
-        <RuntimeProgressBar phase={phase} />
       </div>
     </div>
   );
@@ -148,7 +152,7 @@ export function WorkbenchPage() {
   const [taskType, setTaskType] = useState<TaskType>(taskTypeWhisperx);
   const [languageMode, setLanguageMode] = useState<LanguageMode>('auto');
   const [language, setLanguage] = useState('');
-  const [diarize, setDiarize] = useState(false);
+  const [diarize, setDiarize] = useState(true);
   const [minSpeakers, setMinSpeakers] = useState('');
   const [maxSpeakers, setMaxSpeakers] = useState('');
   const [cleanupStrength, setCleanupStrength] =
@@ -162,8 +166,8 @@ export function WorkbenchPage() {
 
   const acceptedCopy =
     taskType === taskTypePdf
-      ? '接受常见的 PDF 文档。'
-      : '接受常见的音频/视频文件。';
+      ? `接受常见的 PDF 文档，单个文件不超过 ${formatBytes(MAX_UPLOAD_SIZE_BYTES)}。`
+      : `接受常见的音频/视频文件，单个文件不超过 ${formatBytes(MAX_UPLOAD_SIZE_BYTES)}。`;
 
   const reset = () => {
     pollerRef.current?.stop();
@@ -182,8 +186,20 @@ export function WorkbenchPage() {
   };
 
   const selectFile = (nextFile: File | null) => {
-    setFile(nextFile);
     setJob(null);
+    if (!nextFile) {
+      setFile(null);
+      setError(null);
+      return;
+    }
+    const sizeError = fileSizeLimitError(nextFile);
+    if (sizeError) {
+      setFile(null);
+      setError(sizeError);
+      if (inputRef.current) inputRef.current.value = '';
+      return;
+    }
+    setFile(nextFile);
     setError(null);
   };
 
@@ -194,7 +210,14 @@ export function WorkbenchPage() {
 
   const submit = async () => {
     if (!file) {
-      setError('请先选择一个文件。');
+      setError((currentError) => currentError ?? '请先选择一个文件。');
+      return;
+    }
+    const sizeError = fileSizeLimitError(file);
+    if (sizeError) {
+      setFile(null);
+      setError(sizeError);
+      if (inputRef.current) inputRef.current.value = '';
       return;
     }
     pollerRef.current?.stop();
@@ -384,17 +407,6 @@ export function WorkbenchPage() {
                       disabled={!diarize}
                     />
                   </div>
-                  <div className="field field-full">
-                    <label className="label" htmlFor="media-output-formats">
-                      输出格式
-                    </label>
-                    <input
-                      id="media-output-formats"
-                      className="input mono"
-                      value={diarize ? 'output_formats=txt,srt,vtt,json' : 'output_formats=txt,srt,vtt'}
-                      readOnly
-                    />
-                  </div>
                 </div>
               ) : (
                 <div className="form-grid">
@@ -430,12 +442,6 @@ export function WorkbenchPage() {
                 </button>
               </div>
             </Box>
-
-            <div style={{ height: 16 }} />
-
-            <Box title="Artifacts 下载" subtitle="成功后打包为单个 ZIP">
-              <ArtifactZipDownload job={job} zipUrl={(jobId) => api.artifactsZipUrl(jobId)} />
-            </Box>
           </div>
 
           <div className="span-7">
@@ -466,6 +472,12 @@ export function WorkbenchPage() {
                   <div className="error-banner">{job.error}</div>
                 </>
               ) : null}
+            </Box>
+
+            <div style={{ height: 16 }} />
+
+            <Box title="Artifacts 下载" subtitle="成功后打包为单个 ZIP">
+              <ArtifactZipDownload job={job} zipUrl={(jobId) => api.artifactsZipUrl(jobId)} />
             </Box>
           </div>
         </div>

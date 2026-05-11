@@ -36,6 +36,8 @@ npm run typecheck
 http://localhost:8000/api
 ```
 
+前端文件选择会先按 `MEDIA_TO_MD_MAX_UPLOAD_MB` 拒绝超限文件；未设置时默认 `512` MB。
+
 注意：
 
 - 修改环境变量后需要重启 Vite dev server；生产包需要重新 `npm run build`。
