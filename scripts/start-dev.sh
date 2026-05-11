@@ -121,9 +121,22 @@ esac
 API_BASE_URL=${MEDIA_TO_MD_API_BASE_URL:-http://localhost:${BACKEND_PORT}/api}
 BACKEND_LOG=${MEDIA_TO_MD_BACKEND_LOG:-${LOG_DIR}/backend-${BACKEND_PORT}.log}
 FRONTEND_LOG=${MEDIA_TO_MD_FRONTEND_LOG:-${LOG_DIR}/frontend-${FRONTEND_PORT}.log}
+BACKEND_PREVIOUS_LOG="${BACKEND_LOG%.log}.previous.log"
+FRONTEND_PREVIOUS_LOG="${FRONTEND_LOG%.log}.previous.log"
 
 backend_pid=""
 frontend_pid=""
+
+rotate_log() {
+  local current_log=$1
+  local previous_log=$2
+  mkdir -p "$(dirname "${current_log}")" "$(dirname "${previous_log}")"
+  rm -f "${previous_log}"
+  if [[ -e "${current_log}" ]]; then
+    mv "${current_log}" "${previous_log}"
+  fi
+  : > "${current_log}"
+}
 
 start_in_process_group() {
   local __pid_var=$1
@@ -136,14 +149,12 @@ start_in_process_group() {
 stop_process_group() {
   local pid=$1
   [[ -n "${pid}" ]] || return 0
-  kill -0 "${pid}" 2>/dev/null || return 0
   kill -TERM "-${pid}" 2>/dev/null || kill -TERM "${pid}" 2>/dev/null || true
 }
 
 force_stop_process_group() {
   local pid=$1
   [[ -n "${pid}" ]] || return 0
-  kill -0 "${pid}" 2>/dev/null || return 0
   kill -KILL "-${pid}" 2>/dev/null || kill -KILL "${pid}" 2>/dev/null || true
 }
 
@@ -160,8 +171,8 @@ cleanup() {
 }
 
 mkdir -p "${LOG_DIR}"
-: > "${BACKEND_LOG}"
-: > "${FRONTEND_LOG}"
+rotate_log "${BACKEND_LOG}" "${BACKEND_PREVIOUS_LOG}"
+rotate_log "${FRONTEND_LOG}" "${FRONTEND_PREVIOUS_LOG}"
 
 trap cleanup INT TERM EXIT
 
@@ -181,6 +192,13 @@ Frontend: host=${FRONTEND_HOST} port=${FRONTEND_PORT} url=http://localhost:${FRO
 API URL:  ${API_BASE_URL}
 Press Ctrl-C to stop both processes
 MSG
+if [[ -e "${BACKEND_PREVIOUS_LOG}" || -e "${FRONTEND_PREVIOUS_LOG}" ]]; then
+  cat <<MSG
+Previous logs:
+Backend previous:  ${BACKEND_PREVIOUS_LOG}
+Frontend previous: ${FRONTEND_PREVIOUS_LOG}
+MSG
+fi
 
 set +e
 wait -n "${backend_pid}" "${frontend_pid}"
@@ -188,4 +206,12 @@ exit_code=$?
 set -e
 
 printf 'A dev server stopped, shutting down the other process\n' >&2
+cat >&2 <<MSG
+Current logs were kept:
+Backend current:  ${BACKEND_LOG}
+Frontend current: ${FRONTEND_LOG}
+Previous logs:
+Backend previous:  ${BACKEND_PREVIOUS_LOG}
+Frontend previous: ${FRONTEND_PREVIOUS_LOG}
+MSG
 exit "${exit_code}"
