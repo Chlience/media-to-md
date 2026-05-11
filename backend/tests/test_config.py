@@ -27,6 +27,12 @@ def test_config_defaults_direct_cli_runtime(monkeypatch, tmp_path):
     monkeypatch.delenv("WHISPERX_OPENAI_BASE_URL", raising=False)
     monkeypatch.delenv("WHISPERX_OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("WHISPERX_OPENAI_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.delenv("LLM_POLISH_ENABLED", raising=False)
+    monkeypatch.delenv("LLM_POLISH_PROVIDER", raising=False)
+    monkeypatch.delenv("LLM_POLISH_BASE_URL", raising=False)
+    monkeypatch.delenv("LLM_POLISH_API_KEY", raising=False)
+    monkeypatch.delenv("LLM_POLISH_MODEL", raising=False)
+    monkeypatch.delenv("LLM_POLISH_TIMEOUT_SECONDS", raising=False)
     monkeypatch.delenv("WHISPERX_ADMIN_USERNAME", raising=False)
     monkeypatch.delenv("WHISPERX_ADMIN_PASSWORD", raising=False)
 
@@ -52,6 +58,12 @@ def test_config_defaults_direct_cli_runtime(monkeypatch, tmp_path):
         "--image-output",
         "off",
     )
+    assert settings.llm_polish_enabled is False
+    assert settings.llm_polish_provider == "openai"
+    assert settings.llm_polish_base_url is None
+    assert settings.llm_polish_api_key is None
+    assert settings.llm_polish_model is None
+    assert settings.llm_polish_timeout_seconds == 60.0
     assert settings.admin_username is None
     assert settings.admin_password is None
 
@@ -67,6 +79,12 @@ def test_backend_config_json_is_loaded_and_env_can_override(monkeypatch, tmp_pat
   "whisperx_openai_base_url": "http://localhost:9000/v1",
   "whisperx_openai_api_key": "json-key",
   "whisperx_openai_timeout_seconds": 120,
+  "llm_polish_enabled": true,
+  "llm_polish_provider": "moonshot",
+  "llm_polish_base_url": "https://api.moonshot.cn/v1",
+  "llm_polish_api_key": "json-llm-key",
+  "llm_polish_model": "moonshot-v1-8k",
+  "llm_polish_timeout_seconds": 50,
   "whisperx_model_dir": "/models-from-json",
   "nltk_data_dir": "configured-nltk",
   "model_cache_only": true,
@@ -103,6 +121,12 @@ def test_backend_config_json_is_loaded_and_env_can_override(monkeypatch, tmp_pat
     monkeypatch.delenv("WHISPERX_OPENAI_BASE_URL", raising=False)
     monkeypatch.delenv("WHISPERX_OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("WHISPERX_OPENAI_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.delenv("LLM_POLISH_ENABLED", raising=False)
+    monkeypatch.delenv("LLM_POLISH_PROVIDER", raising=False)
+    monkeypatch.delenv("LLM_POLISH_BASE_URL", raising=False)
+    monkeypatch.delenv("LLM_POLISH_API_KEY", raising=False)
+    monkeypatch.delenv("LLM_POLISH_MODEL", raising=False)
+    monkeypatch.delenv("LLM_POLISH_TIMEOUT_SECONDS", raising=False)
     monkeypatch.delenv("WHISPERX_ADMIN_USERNAME", raising=False)
     monkeypatch.delenv("WHISPERX_ADMIN_PASSWORD", raising=False)
 
@@ -117,6 +141,12 @@ def test_backend_config_json_is_loaded_and_env_can_override(monkeypatch, tmp_pat
     assert settings.whisperx_openai_base_url == "http://localhost:9000/v1"
     assert settings.whisperx_openai_api_key == "json-key"
     assert settings.whisperx_openai_timeout_seconds == 120.0
+    assert settings.llm_polish_enabled is True
+    assert settings.llm_polish_provider == "moonshot"
+    assert settings.llm_polish_base_url == "https://api.moonshot.cn/v1"
+    assert settings.llm_polish_api_key == "json-llm-key"
+    assert settings.llm_polish_model == "moonshot-v1-8k"
+    assert settings.llm_polish_timeout_seconds == 50.0
     assert settings.nltk_data_dir == str((tmp_path / "configured-nltk").resolve())
     assert settings.model_cache_only is True
     assert settings.whisperx_args == (
@@ -168,6 +198,12 @@ def test_backend_config_json_is_loaded_and_env_can_override(monkeypatch, tmp_pat
     monkeypatch.setenv("WHISPERX_OPENAI_BASE_URL", "http://127.0.0.1:9100/v1")
     monkeypatch.setenv("WHISPERX_OPENAI_API_KEY", "env-key")
     monkeypatch.setenv("WHISPERX_OPENAI_TIMEOUT_SECONDS", "240")
+    monkeypatch.setenv("LLM_POLISH_ENABLED", "false")
+    monkeypatch.setenv("LLM_POLISH_PROVIDER", "deepseek")
+    monkeypatch.setenv("LLM_POLISH_BASE_URL", "https://api.deepseek.com/v1")
+    monkeypatch.setenv("LLM_POLISH_API_KEY", "env-llm-key")
+    monkeypatch.setenv("LLM_POLISH_MODEL", "deepseek-chat")
+    monkeypatch.setenv("LLM_POLISH_TIMEOUT_SECONDS", "80")
     monkeypatch.setenv(
         "WHISPERX_ARGS_JSON", '{"batch_size": 4, "compute_type": "float16"}'
     )
@@ -190,6 +226,12 @@ def test_backend_config_json_is_loaded_and_env_can_override(monkeypatch, tmp_pat
     assert overridden.whisperx_openai_base_url == "http://127.0.0.1:9100/v1"
     assert overridden.whisperx_openai_api_key == "env-key"
     assert overridden.whisperx_openai_timeout_seconds == 240.0
+    assert overridden.llm_polish_enabled is False
+    assert overridden.llm_polish_provider == "deepseek"
+    assert overridden.llm_polish_base_url == "https://api.deepseek.com/v1"
+    assert overridden.llm_polish_api_key == "env-llm-key"
+    assert overridden.llm_polish_model == "deepseek-chat"
+    assert overridden.llm_polish_timeout_seconds == 80.0
     assert overridden.nltk_data_dir == "/nltk-from-env"
     assert overridden.model_cache_only is False
     assert overridden.whisperx_args == (

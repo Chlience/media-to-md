@@ -7,6 +7,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .llm_polish import (
+    DEFAULT_LLM_PROVIDER,
+    DEFAULT_LLM_TIMEOUT_SECONDS,
+    normalize_llm_provider,
+)
+
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CONFIG_JSON_PATH = BACKEND_ROOT / "config.json"
@@ -134,6 +140,12 @@ class Settings:
     whisperx_openai_args_config: dict[str, Any] = field(default_factory=dict)
     opendataloader_pdf_args: tuple[str, ...] = ()
     opendataloader_pdf_args_config: dict[str, Any] = field(default_factory=dict)
+    llm_polish_enabled: bool = False
+    llm_polish_provider: str = DEFAULT_LLM_PROVIDER
+    llm_polish_base_url: str | None = None
+    llm_polish_api_key: str | None = None
+    llm_polish_model: str | None = None
+    llm_polish_timeout_seconds: float = DEFAULT_LLM_TIMEOUT_SECONDS
     admin_username: str | None = None
     admin_password: str | None = None
 
@@ -694,6 +706,39 @@ def get_settings() -> Settings:
         "whisperx_openai_timeout_seconds",
         3600.0,
     )
+    llm_polish_enabled = _bool_config(
+        os.getenv("LLM_POLISH_ENABLED")
+        if os.getenv("LLM_POLISH_ENABLED") is not None
+        else config.get("llm_polish_enabled"),
+        False,
+    )
+    llm_polish_provider = normalize_llm_provider(
+        os.getenv("LLM_POLISH_PROVIDER")
+        or _optional_str(config.get("llm_polish_provider"))
+        or DEFAULT_LLM_PROVIDER
+    )
+    llm_polish_base_url = (
+        os.getenv("LLM_POLISH_BASE_URL")
+        or _optional_str(config.get("llm_polish_base_url"))
+        or None
+    )
+    llm_polish_api_key = (
+        os.getenv("LLM_POLISH_API_KEY")
+        or _optional_str(config.get("llm_polish_api_key"))
+        or None
+    )
+    llm_polish_model = (
+        os.getenv("LLM_POLISH_MODEL")
+        or _optional_str(config.get("llm_polish_model"))
+        or None
+    )
+    llm_polish_timeout_seconds = _positive_float(
+        os.getenv("LLM_POLISH_TIMEOUT_SECONDS")
+        if os.getenv("LLM_POLISH_TIMEOUT_SECONDS") is not None
+        else config.get("llm_polish_timeout_seconds"),
+        "llm_polish_timeout_seconds",
+        DEFAULT_LLM_TIMEOUT_SECONDS,
+    )
 
     env_nltk_data = os.getenv("WHISPERX_NLTK_DATA_DIR") or os.getenv("NLTK_DATA")
     config_nltk_data = _optional_str(config.get("nltk_data_dir"))
@@ -758,6 +803,12 @@ def get_settings() -> Settings:
         whisperx_openai_args_config=whisperx_openai_args_config,
         opendataloader_pdf_args=normalize_opendataloader_pdf_args(raw_pdf_args),
         opendataloader_pdf_args_config=opendataloader_pdf_args_config,
+        llm_polish_enabled=llm_polish_enabled,
+        llm_polish_provider=llm_polish_provider,
+        llm_polish_base_url=llm_polish_base_url,
+        llm_polish_api_key=llm_polish_api_key,
+        llm_polish_model=llm_polish_model,
+        llm_polish_timeout_seconds=llm_polish_timeout_seconds,
         admin_username=admin_username,
         admin_password=admin_password,
     )

@@ -14,6 +14,11 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Awaitable, Callable, Mapping
 
+from .llm_polish import (
+    LlmPolishConfig,
+    llm_config_from_settings,
+    polish_job_outputs,
+)
 from .opendataloader_pdf_postprocess import (
     postprocess_opendataloader_markdown_outputs,
 )
@@ -76,6 +81,7 @@ class OpenDataLoaderPdfRunnerConfig:
         default_factory=lambda: ("-f", PDF_OUTPUT_FORMATS, "--image-output", "off")
     )
     env: Mapping[str, str] = field(default_factory=dict)
+    llm_config: LlmPolishConfig = field(default_factory=LlmPolishConfig)
 
 
 @dataclass(frozen=True)
@@ -304,7 +310,8 @@ class JobStorageOpenDataLoaderPdfRunner(OpenDataLoaderPdfRunner):
                         "opendataloader_pdf_args",
                         ("-f", PDF_OUTPUT_FORMATS, "--image-output", "off"),
                     )
-                )
+                ),
+                llm_config=llm_config_from_settings(settings),
             ),
         )
 
@@ -363,6 +370,8 @@ class JobStorageOpenDataLoaderPdfRunner(OpenDataLoaderPdfRunner):
                             "filtered_text_count": postprocess_result.filtered_text_count,
                         },
                     )
+            if getattr(manifest.options, "llm_polish", False):
+                await self._run_llm_polish(job_id, task_type="pdf")
         except OpenDataLoaderPdfRunnerError as exc:
             self.storage.append_log(job_id, exc.message)
             self.storage.update_manifest(
@@ -385,3 +394,44 @@ class JobStorageOpenDataLoaderPdfRunner(OpenDataLoaderPdfRunner):
 
     async def start(self, job_id: str) -> None:
         await self.start_job(job_id)
+
+    async def _run_llm_polish(self, job_id: str, *, task_type: str) -> None:
+        from .models import JobStatus
+
+        self.storage.append_event(
+            job_id,
+            "system",
+            "开始执行 LLM 润色。",
+            status=JobStatus.running,
+        )
+        try:
+            result = await asyncio.to_thread(
+                polish_job_outputs,
+                self.storage,
+                job_id,
+                task_type=task_type,
+                config=self.config.llm_config,
+            )
+        except Exception as exc:
+            message = f"LLM 润色失败：{exc}"
+            self.storage.append_log(job_id, message)
+            self.storage.append_event(job_id, "error", message, status=JobStatus.running)
+            return
+        if result.skipped_reason:
+            self.storage.append_event(
+                job_id,
+                "system",
+                result.skipped_reason,
+                status=JobStatus.running,
+            )
+            return
+        self.storage.append_event(
+            job_id,
+            "system",
+            "已生成 LLM 润色版 Markdown。",
+            status=JobStatus.running,
+            data={
+                "source": result.source_path.name if result.source_path else None,
+                "files_created": [path.name for path in result.created_paths],
+            },
+        )

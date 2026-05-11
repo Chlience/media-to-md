@@ -41,6 +41,11 @@ describe('hash routing shell', () => {
     expect(screen.getByLabelText('语言代码')).toHaveAttribute('placeholder', '默认 auto；手动可填 en、zh、ja');
     const diarizeSelect = screen.getByLabelText('说话人分离') as HTMLSelectElement;
     expect(diarizeSelect.value).toBe('true');
+    const llmPolishSelect = screen.getByLabelText('LLM 润色') as HTMLSelectElement;
+    expect(llmPolishSelect.value).toBe('false');
+    fireEvent.change(llmPolishSelect, { target: { value: 'true' } });
+    expect(llmPolishSelect.value).toBe('true');
+    expect(screen.getByText(/额外生成 LLM 润色版 Markdown/)).toBeInTheDocument();
     expect(screen.queryByLabelText('输出格式')).not.toBeInTheDocument();
     expect(screen.queryByDisplayValue(/output_formats=/)).not.toBeInTheDocument();
     expect(screen.getByLabelText('最少说话人数')).not.toBeDisabled();
@@ -65,6 +70,7 @@ describe('hash routing shell', () => {
     expect(screen.queryByText(/时长 .*大小 3 B/)).not.toBeInTheDocument();
     const cleanupSelect = screen.getByLabelText('Markdown 清洗力度') as HTMLSelectElement;
     expect(cleanupSelect.value).toBe('balanced');
+    expect(screen.getByLabelText('LLM 润色')).toHaveValue('true');
     expect([...cleanupSelect.options].map((option) => option.textContent)).toEqual([
       '关闭',
       '保守',
@@ -129,6 +135,25 @@ describe('hash routing shell', () => {
     expect(within(configBox as HTMLElement).getByLabelText('Min speakers')).toBeInTheDocument();
     expect(within(configBox as HTMLElement).getByLabelText('Max speakers')).toBeInTheDocument();
     expect(within(configBox as HTMLElement).getByLabelText('Speaker embeddings')).toBeInTheDocument();
+    expect(within(configBox as HTMLElement).getByLabelText('启用润色服务')).toHaveValue('false');
+    expect(within(configBox as HTMLElement).getByLabelText('供应商')).toHaveValue('openai');
+    expect(within(configBox as HTMLElement).getByLabelText('接口地址')).toHaveAttribute(
+      'placeholder',
+      'https://api.openai.com/v1',
+    );
+    expect(within(configBox as HTMLElement).getByLabelText('API Key')).toHaveAttribute(
+      'placeholder',
+      '请输入供应商 API Key',
+    );
+    expect(within(configBox as HTMLElement).getByLabelText('模型')).toHaveValue('');
+    expect(within(configBox as HTMLElement).getByRole('button', { name: '拉取模型' })).toBeInTheDocument();
+    expect(within(configBox as HTMLElement).getByRole('button', { name: '连接检查' })).toBeInTheDocument();
+    fireEvent.change(within(configBox as HTMLElement).getByLabelText('供应商'), {
+      target: { value: 'deepseek' },
+    });
+    expect(within(configBox as HTMLElement).getByLabelText('接口地址')).toHaveValue(
+      'https://api.deepseek.com/v1',
+    );
     expect(within(configBox as HTMLElement).getByLabelText('仅使用本地缓存')).toHaveValue('false');
     expect(within(configBox as HTMLElement).queryByLabelText('OpenAI Base URL')).not.toBeInTheDocument();
     expect(within(configBox as HTMLElement).getByText(/本机 CLI 模式显示/)).toBeInTheDocument();
@@ -216,6 +241,9 @@ describe('hash routing shell', () => {
               whisperx_cli_model: 'small',
               whisperx_openai_model: 'large-v2',
               whisperx_backend: 'cli',
+              llm_polish_enabled: false,
+              llm_polish_provider: 'openai',
+              llm_polish_timeout_seconds: 60,
             });
           }
           return new Response(JSON.stringify(configResponse), {

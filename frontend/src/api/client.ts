@@ -9,6 +9,8 @@ import {
   JobOptions,
   JobStatus,
   JsonObject,
+  LlmConnectionCheckResponse,
+  LlmModelsResponse,
   jobOptionsToFormFields,
 } from '../types/api';
 import {
@@ -19,6 +21,8 @@ import {
   parseJobCreateResponse,
   parseJobEvent,
   parseJobStatus,
+  parseLlmConnectionCheckResponse,
+  parseLlmModelsResponse,
 } from '../types/parsers';
 
 export interface UploadableFile extends Blob {
@@ -105,6 +109,13 @@ export class WhisperXApiClient {
     whisperxCliArgs: Record<string, unknown>;
     whisperxOpenaiArgs: Record<string, unknown>;
     pdfArgs?: Record<string, unknown>;
+    llmPolishEnabled?: boolean;
+    llmPolishProvider?: string;
+    llmPolishBaseUrl?: string | null;
+    llmPolishApiKey?: string | null;
+    llmPolishClearApiKey?: boolean;
+    llmPolishModel?: string | null;
+    llmPolishTimeoutSeconds?: number;
   }): Promise<BackendConfig> {
     const whisperxBackend = params.whisperxBackend ?? 'cli';
     const activeWhisperxArgs =
@@ -127,9 +138,60 @@ export class WhisperXApiClient {
         whisperx_cli_args: params.whisperxCliArgs,
         whisperx_openai_args: params.whisperxOpenaiArgs,
         opendataloader_pdf_args: params.pdfArgs ?? {},
+        llm_polish_enabled: params.llmPolishEnabled ?? false,
+        llm_polish_provider: params.llmPolishProvider ?? 'openai',
+        llm_polish_base_url: blankToNull(params.llmPolishBaseUrl),
+        llm_polish_api_key: blankToNull(params.llmPolishApiKey),
+        llm_polish_clear_api_key: params.llmPolishClearApiKey ?? false,
+        llm_polish_model: blankToNull(params.llmPolishModel),
+        llm_polish_timeout_seconds: params.llmPolishTimeoutSeconds ?? 60,
       },
     });
     return parseBackendConfig(await response.json());
+  }
+
+  async fetchLlmModels(params: {
+    adminToken: string;
+    provider?: string | null;
+    baseUrl?: string | null;
+    apiKey?: string | null;
+    model?: string | null;
+    timeoutSeconds?: number;
+  }): Promise<LlmModelsResponse> {
+    const response = await this.request('/admin/llm/models', {
+      method: 'POST',
+      bearerToken: params.adminToken,
+      jsonBody: {
+        provider: blankToNull(params.provider),
+        base_url: blankToNull(params.baseUrl),
+        api_key: blankToNull(params.apiKey),
+        model: blankToNull(params.model),
+        timeout_seconds: params.timeoutSeconds ?? null,
+      },
+    });
+    return parseLlmModelsResponse(await response.json());
+  }
+
+  async checkLlmConnection(params: {
+    adminToken: string;
+    provider?: string | null;
+    baseUrl?: string | null;
+    apiKey?: string | null;
+    model?: string | null;
+    timeoutSeconds?: number;
+  }): Promise<LlmConnectionCheckResponse> {
+    const response = await this.request('/admin/llm/check', {
+      method: 'POST',
+      bearerToken: params.adminToken,
+      jsonBody: {
+        provider: blankToNull(params.provider),
+        base_url: blankToNull(params.baseUrl),
+        api_key: blankToNull(params.apiKey),
+        model: blankToNull(params.model),
+        timeout_seconds: params.timeoutSeconds ?? null,
+      },
+    });
+    return parseLlmConnectionCheckResponse(await response.json());
   }
 
   async loginAdmin(params: {

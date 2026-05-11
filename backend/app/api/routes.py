@@ -29,6 +29,14 @@ from ..config import (
     write_backend_config_update,
 )
 from ..jobs import JobRunnerDispatcher, JobService, build_job_runner
+from ..llm_polish import (
+    LlmPolishConfig,
+    check_llm_connection,
+    fetch_llm_models,
+    normalize_llm_provider,
+    provider_infos,
+    resolve_llm_base_url,
+)
 from ..models import (
     AdminAccountResponse,
     AdminAccountUpdateRequest,
@@ -42,6 +50,9 @@ from ..models import (
     JobEventsResponse,
     JobListResponse,
     JobManifest,
+    LlmConnectionCheckResponse,
+    LlmConnectionRequest,
+    LlmModelsResponse,
     JobOptions,
     JobStatus,
     MARKDOWN_CLEANUP_STRENGTHS,
@@ -193,6 +204,13 @@ def _config_response(settings: Settings) -> ConfigResponse:
         whisperx_openai_args_config=dict(settings.whisperx_openai_args_config),
         opendataloader_pdf_args=opendataloader_pdf_argv,
         opendataloader_pdf_args_config=opendataloader_pdf_config,
+        llm_polish_enabled=settings.llm_polish_enabled,
+        llm_polish_provider=settings.llm_polish_provider,
+        llm_polish_base_url=settings.llm_polish_base_url,
+        llm_polish_api_key_configured=bool(settings.llm_polish_api_key),
+        llm_polish_model=settings.llm_polish_model,
+        llm_polish_timeout_seconds=settings.llm_polish_timeout_seconds,
+        llm_polish_providers=provider_infos(),
     )
 
 
@@ -246,6 +264,31 @@ def update_config(
         )
         if not cli_model or not openai_model:
             raise ValueError("Both CLI and OpenAI WhisperX models must be configured.")
+        llm_enabled = (
+            update.llm_polish_enabled
+            if "llm_polish_enabled" in update.model_fields_set
+            else settings.llm_polish_enabled
+        )
+        llm_provider = (
+            update.llm_polish_provider
+            if "llm_polish_provider" in update.model_fields_set
+            else settings.llm_polish_provider
+        )
+        llm_base_url = (
+            update.llm_polish_base_url
+            if "llm_polish_base_url" in update.model_fields_set
+            else settings.llm_polish_base_url
+        )
+        llm_model = (
+            update.llm_polish_model
+            if "llm_polish_model" in update.model_fields_set
+            else settings.llm_polish_model
+        )
+        llm_timeout_seconds = (
+            update.llm_polish_timeout_seconds
+            if "llm_polish_timeout_seconds" in update.model_fields_set
+            else settings.llm_polish_timeout_seconds
+        )
         config_updates = {
             "whisperx_cli_model": cli_model,
             "whisperx_openai_model": openai_model,
@@ -258,11 +301,20 @@ def update_config(
             "whisperx_cli_args": normalized_cli_args_config,
             "whisperx_openai_args": normalized_openai_args_config,
             "opendataloader_pdf_args": normalized_pdf_args_config,
+            "llm_polish_enabled": llm_enabled,
+            "llm_polish_provider": normalize_llm_provider(llm_provider),
+            "llm_polish_base_url": llm_base_url,
+            "llm_polish_model": llm_model,
+            "llm_polish_timeout_seconds": llm_timeout_seconds,
         }
         if update.whisperx_openai_clear_api_key:
             config_updates["whisperx_openai_api_key"] = None
         elif update.whisperx_openai_api_key is not None:
             config_updates["whisperx_openai_api_key"] = update.whisperx_openai_api_key
+        if update.llm_polish_clear_api_key:
+            config_updates["llm_polish_api_key"] = None
+        elif update.llm_polish_api_key is not None:
+            config_updates["llm_polish_api_key"] = update.llm_polish_api_key
         write_backend_config_update(config_updates)
         settings = get_settings()
     except ValueError as exc:
@@ -277,6 +329,77 @@ def update_config(
             request.app.state.storage, settings
         )
     return _config_response(settings)
+
+
+def _llm_config_from_request(
+    payload: LlmConnectionRequest,
+    settings: Settings,
+) -> LlmPolishConfig:
+    provider = normalize_llm_provider(payload.provider or settings.llm_polish_provider)
+    api_key = payload.api_key if payload.api_key is not None else settings.llm_polish_api_key
+    base_url = payload.base_url if payload.base_url is not None else settings.llm_polish_base_url
+    model = payload.model if payload.model is not None else settings.llm_polish_model
+    timeout_seconds = (
+        payload.timeout_seconds
+        if payload.timeout_seconds is not None
+        else settings.llm_polish_timeout_seconds
+    )
+    return LlmPolishConfig(
+        enabled=True,
+        provider=provider,
+        base_url=base_url,
+        api_key=api_key,
+        model=model,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+@router.post("/admin/llm/models", response_model=LlmModelsResponse)
+def admin_llm_models(
+    payload: LlmConnectionRequest,
+    settings: Annotated[Settings, Depends(get_settings_dep)],
+    _: Annotated[str, Depends(require_admin)],
+) -> LlmModelsResponse:
+    try:
+        config = _llm_config_from_request(payload, settings)
+        models = fetch_llm_models(config)
+        return LlmModelsResponse(
+            provider=normalize_llm_provider(config.provider),
+            base_url=resolve_llm_base_url(config.provider, config.base_url),
+            models=models,
+            message=f"已拉取 {len(models)} 个模型。" if models else "供应商未返回可枚举模型。",
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/admin/llm/check", response_model=LlmConnectionCheckResponse)
+def admin_llm_check(
+    payload: LlmConnectionRequest,
+    settings: Annotated[Settings, Depends(get_settings_dep)],
+    _: Annotated[str, Depends(require_admin)],
+) -> LlmConnectionCheckResponse:
+    try:
+        config = _llm_config_from_request(payload, settings)
+        base_url = resolve_llm_base_url(config.provider, config.base_url)
+        ok, message, models = check_llm_connection(config)
+        return LlmConnectionCheckResponse(
+            ok=ok,
+            provider=normalize_llm_provider(config.provider),
+            base_url=base_url,
+            model=config.model,
+            message=message,
+            models=models,
+        )
+    except Exception as exc:
+        return LlmConnectionCheckResponse(
+            ok=False,
+            provider=payload.provider or settings.llm_polish_provider,
+            base_url=payload.base_url or settings.llm_polish_base_url,
+            model=payload.model or settings.llm_polish_model,
+            message=str(exc),
+            models=[],
+        )
 
 
 @router.post("/admin/login", response_model=AdminTokenResponse)
@@ -341,6 +464,7 @@ async def upload_job(
     output_formats: str | None = Form(None),
     task_type: str = Form("whisperx"),
     markdown_cleanup_strength: str | None = Form(None),
+    llm_polish: bool = Form(False),
 ) -> JobCreated:
     task_type = task_type.strip().lower()
     if task_type not in {"whisperx", "pdf"}:
@@ -361,7 +485,10 @@ async def upload_job(
                 status_code=400,
                 detail="markdown_cleanup_strength must be one of: off, conservative, balanced, aggressive.",
             )
-        options = PdfJobOptions(markdown_cleanup_strength=cleanup_strength)
+        options = PdfJobOptions(
+            markdown_cleanup_strength=cleanup_strength,
+            llm_polish=llm_polish,
+        )
         manifest = service.create_job(file.file, file.filename or "upload", options)
         return JobCreated(job_id=manifest.job_id, status=manifest.status)
 
@@ -386,6 +513,7 @@ async def upload_job(
             model_cache_only=settings.model_cache_only
             if model_cache_only is None
             else model_cache_only,
+            llm_polish=llm_polish,
             output_formats=_normalize_whisperx_output_formats(output_formats),
         )
     except ValueError as exc:

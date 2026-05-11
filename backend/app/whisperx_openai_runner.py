@@ -18,6 +18,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Mapping, Sequence
 
+from .llm_polish import (
+    LlmPolishConfig,
+    llm_config_from_settings,
+    polish_job_outputs,
+)
 from .runtime_progress import (
     append_progress_event,
     phase_from_openai_progress,
@@ -60,6 +65,7 @@ class OpenAIWhisperXRunnerConfig:
     timeout_seconds: float = 3600.0
     progress_poll_interval_seconds: float = 2.0
     config_fields: Mapping[str, Any] = field(default_factory=dict)
+    llm_config: LlmPolishConfig = field(default_factory=LlmPolishConfig)
 
 
 @dataclass(frozen=True)
@@ -666,6 +672,7 @@ class JobStorageOpenAIWhisperXRunner(OpenAIWhisperXRunner):
                     getattr(settings, "whisperx_openai_timeout_seconds", 3600.0)
                 ),
                 config_fields=config_fields,
+                llm_config=llm_config_from_settings(settings),
             ),
         )
 
@@ -753,7 +760,23 @@ class JobStorageOpenAIWhisperXRunner(OpenAIWhisperXRunner):
             runtime_phase("finalize", manifest.options, source="openai"),
             JobStatus.running,
         )
+        if getattr(manifest.options, "llm_polish", False):
+            self.storage.append_event(
+                job_id,
+                "system",
+                "开始执行 LLM 润色。",
+                status=JobStatus.running,
+            )
+            append_progress_event(
+                self.storage,
+                job_id,
+                runtime_phase("llm_polish", manifest.options, source="llm"),
+                JobStatus.running,
+            )
+            await self._run_llm_polish(job_id, task_type="whisperx")
         public_formats = set(request.options.output_formats)
+        if getattr(manifest.options, "llm_polish", False):
+            public_formats.add("markdown_llm")
         artifacts = [
             artifact
             for artifact in self.storage.discover_output_artifacts(job_id)
@@ -776,6 +799,41 @@ class JobStorageOpenAIWhisperXRunner(OpenAIWhisperXRunner):
 
     async def start(self, job_id: str) -> None:
         await self.start_job(job_id)
+
+    async def _run_llm_polish(self, job_id: str, *, task_type: str) -> None:
+        from .models import JobStatus
+
+        try:
+            result = await asyncio.to_thread(
+                polish_job_outputs,
+                self.storage,
+                job_id,
+                task_type=task_type,
+                config=self.config.llm_config,
+            )
+        except Exception as exc:
+            message = f"LLM 润色失败：{exc}"
+            self.storage.append_log(job_id, message)
+            self.storage.append_event(job_id, "error", message, status=JobStatus.running)
+            return
+        if result.skipped_reason:
+            self.storage.append_event(
+                job_id,
+                "system",
+                result.skipped_reason,
+                status=JobStatus.running,
+            )
+            return
+        self.storage.append_event(
+            job_id,
+            "system",
+            "已生成 LLM 润色版 Markdown。",
+            status=JobStatus.running,
+            data={
+                "source": result.source_path.name if result.source_path else None,
+                "files_created": [path.name for path in result.created_paths],
+            },
+        )
 
 
 def _safe_field_summary(fields: Sequence[tuple[str, str]]) -> str:

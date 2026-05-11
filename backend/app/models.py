@@ -23,6 +23,7 @@ ARTIFACT_FORMATS = {
     "md",
     "markdown",
     "markdown_clear",
+    "markdown_llm",
     "html",
     "pdf",
     "png",
@@ -52,6 +53,7 @@ class WhisperXJobOptions(BaseModel):
     max_speakers: int | None = Field(default=None, ge=1)
     model_dir: str | None = None
     model_cache_only: bool = False
+    llm_polish: bool = False
     output_formats: list[Literal["txt", "srt", "vtt", "json", "md", "markdown"]] = (
         Field(default_factory=lambda: list(DEFAULT_OUTPUT_FORMATS))
     )
@@ -127,6 +129,7 @@ class PdfJobOptions(BaseModel):
     image_format: Literal["png", "jpeg"] = "png"
     threads: int = Field(default=1, ge=1)
     markdown_cleanup_strength: MarkdownCleanupStrength = "balanced"
+    llm_polish: bool = False
 
     @field_validator("format")
     @classmethod
@@ -222,6 +225,7 @@ class Artifact(BaseModel):
         "md",
         "markdown",
         "markdown_clear",
+        "markdown_llm",
         "html",
         "pdf",
         "png",
@@ -359,6 +363,55 @@ class ConfigResponse(BaseModel):
     whisperx_openai_args_config: dict[str, Any] = Field(default_factory=dict)
     opendataloader_pdf_args: list[str] = Field(default_factory=list)
     opendataloader_pdf_args_config: dict[str, Any] = Field(default_factory=dict)
+    llm_polish_enabled: bool = False
+    llm_polish_provider: str = "openai"
+    llm_polish_base_url: str | None = None
+    llm_polish_api_key_configured: bool = False
+    llm_polish_model: str | None = None
+    llm_polish_timeout_seconds: float = 60.0
+    llm_polish_providers: list["LlmProviderInfo"] = Field(default_factory=list)
+
+
+class LlmProviderInfo(BaseModel):
+    id: str
+    label: str
+    base_url: str | None = None
+
+
+class LlmConnectionRequest(BaseModel):
+    provider: str | None = Field(default=None, max_length=64)
+    base_url: str | None = Field(default=None, max_length=4096)
+    api_key: str | None = Field(default=None, max_length=4096)
+    model: str | None = Field(default=None, max_length=4096)
+    timeout_seconds: float | None = Field(default=None, gt=0)
+
+    @field_validator("provider", "base_url", "api_key", "model")
+    @classmethod
+    def normalize_optional_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        text = value.strip()
+        if not text:
+            return None
+        if any(char in text for char in ("\x00", "\n", "\r")):
+            raise ValueError("LLM connection values must be single-line text")
+        return text
+
+
+class LlmModelsResponse(BaseModel):
+    provider: str
+    base_url: str
+    models: list[str] = Field(default_factory=list)
+    message: str
+
+
+class LlmConnectionCheckResponse(BaseModel):
+    ok: bool
+    provider: str
+    base_url: str | None = None
+    model: str | None = None
+    message: str
+    models: list[str] = Field(default_factory=list)
 
 
 class ConfigUpdateRequest(BaseModel):
@@ -377,6 +430,13 @@ class ConfigUpdateRequest(BaseModel):
     whisperx_cli_args: dict[str, Any] | None = None
     whisperx_openai_args: dict[str, Any] | None = None
     opendataloader_pdf_args: dict[str, Any] = Field(default_factory=dict)
+    llm_polish_enabled: bool = False
+    llm_polish_provider: str = Field(default="openai", max_length=64)
+    llm_polish_base_url: str | None = Field(default=None, max_length=4096)
+    llm_polish_api_key: str | None = Field(default=None, max_length=4096)
+    llm_polish_clear_api_key: bool = False
+    llm_polish_model: str | None = Field(default=None, max_length=4096)
+    llm_polish_timeout_seconds: float = Field(default=60.0, gt=0)
 
     @field_validator("whisperx_model", "whisperx_cli_model", "whisperx_openai_model")
     @classmethod
@@ -395,6 +455,9 @@ class ConfigUpdateRequest(BaseModel):
         "nltk_data_dir",
         "whisperx_openai_base_url",
         "whisperx_openai_api_key",
+        "llm_polish_base_url",
+        "llm_polish_api_key",
+        "llm_polish_model",
     )
     @classmethod
     def normalize_optional_text(cls, value: str | None) -> str | None:
@@ -403,6 +466,16 @@ class ConfigUpdateRequest(BaseModel):
         text = value.strip()
         if not text:
             return None
+        if any(char in text for char in ("\x00", "\n", "\r")):
+            raise ValueError("config values must be single-line text")
+        return text
+
+    @field_validator("llm_polish_provider")
+    @classmethod
+    def normalize_llm_provider_value(cls, value: str) -> str:
+        text = value.strip().lower()
+        if not text:
+            return "openai"
         if any(char in text for char in ("\x00", "\n", "\r")):
             raise ValueError("config values must be single-line text")
         return text

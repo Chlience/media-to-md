@@ -23,6 +23,7 @@ import {
   BackendConfig,
   JobEvent,
   JobStatus,
+  LlmProviderInfo,
   RuntimePhase,
   taskTypeLabel,
   taskTypePdf,
@@ -43,6 +44,20 @@ const defaultOpenaiWhisperxModel = 'large-v2';
 const defaultModelCacheOnly = false;
 const defaultWhisperxBackend: WhisperxBackend = 'cli';
 const defaultOpenaiTimeoutSeconds = '3600';
+const defaultLlmProvider = 'openai';
+const defaultLlmTimeoutSeconds = '60';
+const fallbackLlmProviders: LlmProviderInfo[] = [
+  { id: 'openai', label: 'OpenAI', baseUrl: 'https://api.openai.com/v1' },
+  { id: 'deepseek', label: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1' },
+  { id: 'moonshot', label: 'Moonshot', baseUrl: 'https://api.moonshot.cn/v1' },
+  {
+    id: 'dashscope',
+    label: '阿里云 DashScope',
+    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  },
+  { id: 'openrouter', label: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1' },
+  { id: 'custom', label: '自定义 OpenAI 兼容接口', baseUrl: null },
+];
 const defaultWhisperxArgDisplay = {
   device: '',
   computeType: '',
@@ -132,6 +147,10 @@ function eventTimelineText(event: JobEvent) {
   );
 }
 
+function llmProviderDefaultBaseUrl(providers: LlmProviderInfo[], providerId: string): string {
+  return providers.find((provider) => provider.id === providerId)?.baseUrl ?? '';
+}
+
 export function AdminPage() {
   const [token, setToken] = useState(() => sessionStore.read()?.token ?? '');
   const [username, setUsername] = useState(() => sessionStore.read()?.username ?? 'admin');
@@ -156,6 +175,17 @@ export function AdminPage() {
   const [cliWhisperxArgs, setCliWhisperxArgs] = useState('{}');
   const [openaiWhisperxArgs, setOpenaiWhisperxArgs] = useState('{}');
   const [pdfArgs, setPdfArgs] = useState('{}');
+  const [llmPolishEnabled, setLlmPolishEnabled] = useState(false);
+  const [llmProvider, setLlmProvider] = useState(defaultLlmProvider);
+  const [llmBaseUrl, setLlmBaseUrl] = useState('');
+  const [llmApiKey, setLlmApiKey] = useState('');
+  const [llmApiKeyConfigured, setLlmApiKeyConfigured] = useState(false);
+  const [llmClearApiKey, setLlmClearApiKey] = useState(false);
+  const [llmModel, setLlmModel] = useState('');
+  const [llmTimeoutSeconds, setLlmTimeoutSeconds] = useState(defaultLlmTimeoutSeconds);
+  const [llmModels, setLlmModels] = useState<string[]>([]);
+  const [llmNotice, setLlmNotice] = useState<ConfigNotice>(null);
+  const [llmBusy, setLlmBusy] = useState(false);
   const [selectedJob, setSelectedJob] = useState<JobStatus | null>(null);
   const [selectedEvents, setSelectedEvents] = useState<JobEvent[]>([]);
   const [selectedLog, setSelectedLog] = useState('');
@@ -198,6 +228,10 @@ export function AdminPage() {
     whisperxBackend === 'openai' ? openaiWhisperxArgs : cliWhisperxArgs;
   const setVisibleWhisperxArgs =
     whisperxBackend === 'openai' ? setOpenaiWhisperxArgs : setCliWhisperxArgs;
+  const llmProviders =
+    config?.llmPolishProviders && config.llmPolishProviders.length > 0
+      ? config.llmPolishProviders
+      : fallbackLlmProviders;
   const setVisibleModel = (value: string) => {
     if (whisperxBackend === 'openai') {
       setOpenaiModel(value);
@@ -233,6 +267,16 @@ export function AdminPage() {
     setCliWhisperxArgs(jsonPreview(nextConfig.whisperxCliArgsConfig));
     setOpenaiWhisperxArgs(jsonPreview(nextConfig.whisperxOpenaiArgsConfig));
     setPdfArgs(jsonPreview(nextConfig.pdfArgsConfig));
+    setLlmPolishEnabled(nextConfig.llmPolishEnabled);
+    setLlmProvider(nextConfig.llmPolishProvider || defaultLlmProvider);
+    setLlmBaseUrl(nextConfig.llmPolishBaseUrl ?? '');
+    setLlmApiKey('');
+    setLlmApiKeyConfigured(nextConfig.llmPolishApiKeyConfigured);
+    setLlmClearApiKey(false);
+    setLlmModel(nextConfig.llmPolishModel ?? '');
+    setLlmTimeoutSeconds(String(nextConfig.llmPolishTimeoutSeconds || 60));
+    setLlmModels([]);
+    setLlmNotice(null);
   };
 
   const refresh = async (adminToken = token) => {
@@ -395,6 +439,10 @@ export function AdminPage() {
       if (!Number.isFinite(parsedOpenaiTimeoutSeconds) || parsedOpenaiTimeoutSeconds <= 0) {
         throw new Error('OpenAI timeout seconds 必须是大于 0 的数字。');
       }
+      const parsedLlmTimeoutSeconds = Number(llmTimeoutSeconds || defaultLlmTimeoutSeconds);
+      if (!Number.isFinite(parsedLlmTimeoutSeconds) || parsedLlmTimeoutSeconds <= 0) {
+        throw new Error('LLM timeout seconds 必须是大于 0 的数字。');
+      }
       const nextConfig = await api.updateConfig({
         adminToken: token,
         cliModel,
@@ -410,6 +458,13 @@ export function AdminPage() {
         whisperxCliArgs: parseJsonObject(cliWhisperxArgs),
         whisperxOpenaiArgs: parseJsonObject(openaiWhisperxArgs),
         pdfArgs: parseJsonObject(pdfArgs),
+        llmPolishEnabled,
+        llmPolishProvider: llmProvider,
+        llmPolishBaseUrl: llmBaseUrl,
+        llmPolishApiKey: llmApiKey,
+        llmPolishClearApiKey: llmClearApiKey,
+        llmPolishModel: llmModel,
+        llmPolishTimeoutSeconds: parsedLlmTimeoutSeconds,
       });
       setConfig(nextConfig);
       setWhisperxBackend(nextConfig.whisperxBackend);
@@ -423,6 +478,14 @@ export function AdminPage() {
       setCliWhisperxArgs(jsonPreview(nextConfig.whisperxCliArgsConfig));
       setOpenaiWhisperxArgs(jsonPreview(nextConfig.whisperxOpenaiArgsConfig));
       setPdfArgs(jsonPreview(nextConfig.pdfArgsConfig));
+      setLlmPolishEnabled(nextConfig.llmPolishEnabled);
+      setLlmProvider(nextConfig.llmPolishProvider || defaultLlmProvider);
+      setLlmBaseUrl(nextConfig.llmPolishBaseUrl ?? '');
+      setLlmApiKey('');
+      setLlmApiKeyConfigured(nextConfig.llmPolishApiKeyConfigured);
+      setLlmClearApiKey(false);
+      setLlmModel(nextConfig.llmPolishModel ?? '');
+      setLlmTimeoutSeconds(String(nextConfig.llmPolishTimeoutSeconds || 60));
       setConfigNotice({ kind: 'success', message: '配置已保存' });
     } catch (nextError) {
       const message = trimTrailingPunctuation(errorMessage(nextError));
@@ -433,6 +496,76 @@ export function AdminPage() {
       });
     } finally {
       setBusy(false);
+    }
+  };
+
+  const parsedLlmTimeoutOrDefault = () => {
+    const parsed = Number(llmTimeoutSeconds || defaultLlmTimeoutSeconds);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      throw new Error('LLM timeout seconds 必须是大于 0 的数字。');
+    }
+    return parsed;
+  };
+
+  const changeLlmProvider = (nextProvider: string) => {
+    const previousDefault = llmProviderDefaultBaseUrl(llmProviders, llmProvider);
+    const nextDefault = llmProviderDefaultBaseUrl(llmProviders, nextProvider);
+    const shouldReplaceBaseUrl = !llmBaseUrl.trim() || llmBaseUrl.trim() === previousDefault;
+    setLlmProvider(nextProvider);
+    if (shouldReplaceBaseUrl) setLlmBaseUrl(nextDefault);
+    setLlmModels([]);
+    setLlmNotice(null);
+  };
+
+  const loadLlmModels = async () => {
+    if (!token) return;
+    setLlmBusy(true);
+    setLlmNotice(null);
+    try {
+      const response = await api.fetchLlmModels({
+        adminToken: token,
+        provider: llmProvider,
+        baseUrl: llmBaseUrl,
+        apiKey: llmApiKey,
+        model: llmModel,
+        timeoutSeconds: parsedLlmTimeoutOrDefault(),
+      });
+      setLlmBaseUrl(response.baseUrl);
+      setLlmModels(response.models);
+      if (!llmModel.trim() && response.models[0]) setLlmModel(response.models[0]);
+      setLlmNotice({ kind: 'success', message: response.message });
+    } catch (nextError) {
+      const message = trimTrailingPunctuation(errorMessage(nextError));
+      setLlmNotice({ kind: 'error', message: message || '模型拉取失败' });
+    } finally {
+      setLlmBusy(false);
+    }
+  };
+
+  const checkLlmProviderConnection = async () => {
+    if (!token) return;
+    setLlmBusy(true);
+    setLlmNotice(null);
+    try {
+      const response = await api.checkLlmConnection({
+        adminToken: token,
+        provider: llmProvider,
+        baseUrl: llmBaseUrl,
+        apiKey: llmApiKey,
+        model: llmModel,
+        timeoutSeconds: parsedLlmTimeoutOrDefault(),
+      });
+      if (response.baseUrl) setLlmBaseUrl(response.baseUrl);
+      if (response.models.length > 0) setLlmModels(response.models);
+      setLlmNotice({
+        kind: response.ok ? 'success' : 'error',
+        message: response.message,
+      });
+    } catch (nextError) {
+      const message = trimTrailingPunctuation(errorMessage(nextError));
+      setLlmNotice({ kind: 'error', message: message || '连接检查失败' });
+    } finally {
+      setLlmBusy(false);
     }
   };
 
@@ -684,6 +817,43 @@ export function AdminPage() {
                       <div className="field"><label className="label" htmlFor="cfg-pdf-hybrid">Hybrid backend</label><select id="cfg-pdf-hybrid" className="select" value={pdfArgValue('hybrid', 'off')} onChange={(event) => setPdfArg('hybrid', event.target.value)}><option value="off">off</option><option value="docling-fast">docling-fast</option><option value="hancom-ai">hancom-ai</option></select></div>
                       <div className="field"><label className="label" htmlFor="cfg-pdf-hybrid-mode">hybrid_mode</label><select id="cfg-pdf-hybrid-mode" className="select" value={pdfArgValue('hybrid_mode', 'auto')} onChange={(event) => setPdfArg('hybrid_mode', event.target.value)}><option value="auto">auto</option><option value="full">full</option></select></div>
                       <div className="field"><label className="label" htmlFor="cfg-pdf-timeout">hybrid_timeout</label><input id="cfg-pdf-timeout" className="input mono" value={pdfArgValue('hybrid_timeout', '')} placeholder="默认" onChange={(event) => setPdfArg('hybrid_timeout', event.target.value)} /></div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="config-card">
+                  <h3>LLM 润色</h3>
+                  <div className="config-inner">
+                    <div className="form-grid">
+                      <div className="field field-full">
+                        <div className="status-note">
+                          这里配置音视频转写与 OpenDataLoader PDF 共用的润色服务；具体任务是否润色由工作台的 LLM 润色开关决定。
+                        </div>
+                      </div>
+                      <div className="field"><label className="label" htmlFor="cfg-llm-enabled">启用润色服务</label><select id="cfg-llm-enabled" className="select" value={String(llmPolishEnabled)} onChange={(event) => setLlmPolishEnabled(event.target.value === 'true')}><option value="false">关闭</option><option value="true">开启</option></select></div>
+                      <div className="field"><label className="label" htmlFor="cfg-llm-provider">供应商</label><select id="cfg-llm-provider" className="select" value={llmProvider} onChange={(event) => changeLlmProvider(event.target.value)}>{llmProviders.map((provider) => <option key={provider.id} value={provider.id}>{provider.label}</option>)}</select></div>
+                      <div className="field field-full"><label className="label" htmlFor="cfg-llm-base-url">接口地址</label><input id="cfg-llm-base-url" className="input mono" value={llmBaseUrl} placeholder={llmProviderDefaultBaseUrl(llmProviders, llmProvider) || 'https://host/v1'} onChange={(event) => setLlmBaseUrl(event.target.value)} /></div>
+                      <div className="field"><label className="label" htmlFor="cfg-llm-api-key">API Key</label><input id="cfg-llm-api-key" className="input mono" type="password" value={llmApiKey} placeholder={llmApiKeyConfigured ? '已配置；留空保持不变' : '请输入供应商 API Key'} onChange={(event) => setLlmApiKey(event.target.value)} /></div>
+                      <div className="field"><label className="label" htmlFor="cfg-llm-clear-key">清除 API Key</label><select id="cfg-llm-clear-key" className="select" value={String(llmClearApiKey)} onChange={(event) => setLlmClearApiKey(event.target.value === 'true')}><option value="false">false</option><option value="true">true</option></select></div>
+                      <div className="field"><label className="label" htmlFor="cfg-llm-model">模型</label><input id="cfg-llm-model" className="input mono" value={llmModel} list="cfg-llm-model-list" placeholder="先拉取或手动填写模型名" onChange={(event) => setLlmModel(event.target.value)} /><datalist id="cfg-llm-model-list">{llmModels.map((model) => <option key={model} value={model} />)}</datalist></div>
+                      <div className="field"><label className="label" htmlFor="cfg-llm-timeout">LLM timeout seconds</label><input id="cfg-llm-timeout" className="input mono" value={llmTimeoutSeconds} onChange={(event) => setLlmTimeoutSeconds(event.target.value)} /></div>
+                      <div className="field field-full">
+                        <div className="btn-row">
+                          <button className="btn" type="button" disabled={!signedIn || llmBusy} onClick={() => void loadLlmModels()}>
+                            拉取模型
+                          </button>
+                          <button className="btn" type="button" disabled={!signedIn || llmBusy} onClick={() => void checkLlmProviderConnection()}>
+                            连接检查
+                          </button>
+                        </div>
+                      </div>
+                      {llmNotice ? (
+                        <div className="field field-full">
+                          <div className={llmNotice.kind === 'error' ? 'error-banner' : 'status-note'}>
+                            {llmNotice.message}
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 </div>

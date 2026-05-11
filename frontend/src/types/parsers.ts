@@ -7,6 +7,9 @@ import {
   JobEvent,
   JobStatus,
   JsonObject,
+  LlmConnectionCheckResponse,
+  LlmModelsResponse,
+  LlmProviderInfo,
   RuntimePhase,
 } from './api';
 
@@ -47,6 +50,15 @@ function asUnknownRecord(value: unknown): Record<string, unknown> {
   return isRecord(value) ? { ...value } : {};
 }
 
+function parseLlmProviderInfo(json: unknown): LlmProviderInfo {
+  const object = asObject(json, 'LlmProviderInfo');
+  return {
+    id: asString(object.id),
+    label: asString(object.label),
+    baseUrl: asNullableString(object.base_url),
+  };
+}
+
 export function parseBackendConfig(json: unknown): BackendConfig {
   const object = asObject(json, 'BackendConfig');
   const rawWhisperxArgs = object.whisperx_args;
@@ -83,6 +95,37 @@ export function parseBackendConfig(json: unknown): BackendConfig {
     pdfArgs: asStringArray(rawPdfArgs),
     pdfArgsConfig: asUnknownRecord(rawPdfArgsConfig),
     nltkDataDir: asNullableString(object.nltk_data_dir),
+    llmPolishEnabled: asBoolean(object.llm_polish_enabled, false),
+    llmPolishProvider: asString(object.llm_polish_provider, 'openai'),
+    llmPolishBaseUrl: asNullableString(object.llm_polish_base_url),
+    llmPolishApiKeyConfigured: asBoolean(object.llm_polish_api_key_configured, false),
+    llmPolishModel: asNullableString(object.llm_polish_model),
+    llmPolishTimeoutSeconds: asNumber(object.llm_polish_timeout_seconds) ?? 60,
+    llmPolishProviders: Array.isArray(object.llm_polish_providers)
+      ? object.llm_polish_providers.map(parseLlmProviderInfo)
+      : [],
+  };
+}
+
+export function parseLlmModelsResponse(json: unknown): LlmModelsResponse {
+  const object = asObject(json, 'LlmModelsResponse');
+  return {
+    provider: asString(object.provider),
+    baseUrl: asString(object.base_url),
+    models: asStringArray(object.models),
+    message: asString(object.message),
+  };
+}
+
+export function parseLlmConnectionCheckResponse(json: unknown): LlmConnectionCheckResponse {
+  const object = asObject(json, 'LlmConnectionCheckResponse');
+  return {
+    ok: asBoolean(object.ok, false),
+    provider: asString(object.provider),
+    baseUrl: asNullableString(object.base_url),
+    model: asNullableString(object.model),
+    message: asString(object.message),
+    models: asStringArray(object.models),
   };
 }
 

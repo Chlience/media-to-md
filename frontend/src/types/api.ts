@@ -35,6 +35,7 @@ export type PdfCleanupStrength = (typeof pdfCleanupStrengths)[number];
 export const supportedPdfArtifactFormats = [
   'markdown',
   'markdown_clear',
+  'markdown_llm',
   'text',
 ] as const;
 
@@ -58,11 +59,13 @@ export interface WhisperxJobOptions {
   minSpeakers?: number | null;
   maxSpeakers?: number | null;
   modelCacheOnly?: boolean | null;
+  llmPolish?: boolean | null;
 }
 
 export interface PdfJobOptions {
   taskType: typeof taskTypePdf;
   markdownCleanupStrength?: PdfCleanupStrength;
+  llmPolish?: boolean | null;
 }
 
 export type JobOptions = WhisperxJobOptions | PdfJobOptions;
@@ -85,6 +88,35 @@ export interface BackendConfig {
   pdfArgs: string[];
   pdfArgsConfig: Record<string, unknown>;
   nltkDataDir: string | null;
+  llmPolishEnabled: boolean;
+  llmPolishProvider: string;
+  llmPolishBaseUrl: string | null;
+  llmPolishApiKeyConfigured: boolean;
+  llmPolishModel: string | null;
+  llmPolishTimeoutSeconds: number;
+  llmPolishProviders: LlmProviderInfo[];
+}
+
+export interface LlmProviderInfo {
+  id: string;
+  label: string;
+  baseUrl: string | null;
+}
+
+export interface LlmModelsResponse {
+  provider: string;
+  baseUrl: string;
+  models: string[];
+  message: string;
+}
+
+export interface LlmConnectionCheckResponse {
+  ok: boolean;
+  provider: string;
+  baseUrl: string | null;
+  model: string | null;
+  message: string;
+  models: string[];
 }
 
 export interface JobCreateResponse {
@@ -176,6 +208,7 @@ export function jobOptionsToFormFields(options: JobOptions): Record<string, stri
       task_type: taskTypePdf,
       markdown_cleanup_strength:
         options.markdownCleanupStrength ?? pdfCleanupStrengthBalanced,
+      llm_polish: String(Boolean(options.llmPolish)),
     };
   }
 
@@ -186,6 +219,7 @@ export function jobOptionsToFormFields(options: JobOptions): Record<string, stri
     task_type: taskTypeWhisperx,
     language: options.language === 'auto' ? 'auto' : options.language,
     output_formats: requestedFormats.join(','),
+    llm_polish: String(Boolean(options.llmPolish)),
   };
   const selectedModel = options.model?.trim();
   if (selectedModel) fields.model = selectedModel;

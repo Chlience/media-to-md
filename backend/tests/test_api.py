@@ -17,6 +17,34 @@ from app.whisperx_openai_runner import JobStorageOpenAIWhisperXRunner
 from app.whisperx_runner import JobStorageWhisperXRunner
 
 
+LLM_PROVIDER_EXPECTED = [
+    {"id": "openai", "label": "OpenAI", "base_url": "https://api.openai.com/v1"},
+    {"id": "deepseek", "label": "DeepSeek", "base_url": "https://api.deepseek.com/v1"},
+    {"id": "moonshot", "label": "Moonshot", "base_url": "https://api.moonshot.cn/v1"},
+    {
+        "id": "dashscope",
+        "label": "阿里云 DashScope",
+        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    },
+    {
+        "id": "openrouter",
+        "label": "OpenRouter",
+        "base_url": "https://openrouter.ai/api/v1",
+    },
+    {"id": "custom", "label": "自定义 OpenAI 兼容接口", "base_url": None},
+]
+
+DEFAULT_LLM_CONFIG_EXPECTED = {
+    "llm_polish_enabled": False,
+    "llm_polish_provider": "openai",
+    "llm_polish_base_url": None,
+    "llm_polish_api_key_configured": False,
+    "llm_polish_model": None,
+    "llm_polish_timeout_seconds": 60.0,
+    "llm_polish_providers": LLM_PROVIDER_EXPECTED,
+}
+
+
 class FakeRunner:
     def __init__(self, app_ref):
         self.app_ref = app_ref
@@ -111,6 +139,7 @@ def test_upload_status_config_reconstruct_from_filesystem(tmp_path):
         "whisperx_openai_args_config": {},
         "opendataloader_pdf_args": [],
         "opendataloader_pdf_args_config": {"format": "markdown,text", "image_output": "off"},
+        **DEFAULT_LLM_CONFIG_EXPECTED,
     }
     job_id = upload(client)
 
@@ -393,6 +422,12 @@ def test_admin_can_update_backend_config(monkeypatch, tmp_path):
     monkeypatch.delenv("WHISPERX_OPENAI_BASE_URL", raising=False)
     monkeypatch.delenv("WHISPERX_OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("WHISPERX_OPENAI_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.delenv("LLM_POLISH_ENABLED", raising=False)
+    monkeypatch.delenv("LLM_POLISH_PROVIDER", raising=False)
+    monkeypatch.delenv("LLM_POLISH_BASE_URL", raising=False)
+    monkeypatch.delenv("LLM_POLISH_API_KEY", raising=False)
+    monkeypatch.delenv("LLM_POLISH_MODEL", raising=False)
+    monkeypatch.delenv("LLM_POLISH_TIMEOUT_SECONDS", raising=False)
     monkeypatch.delenv("WHISPERX_ADMIN_USERNAME", raising=False)
     monkeypatch.delenv("WHISPERX_ADMIN_PASSWORD", raising=False)
     client = TestClient(create_app())
@@ -423,6 +458,12 @@ def test_admin_can_update_backend_config(monkeypatch, tmp_path):
                 "max_speakers": 4,
                 "speaker_embeddings": True,
             },
+            "llm_polish_enabled": True,
+            "llm_polish_provider": "deepseek",
+            "llm_polish_base_url": "https://api.deepseek.com/v1",
+            "llm_polish_api_key": "llm-key",
+            "llm_polish_model": "deepseek-chat",
+            "llm_polish_timeout_seconds": 45,
         },
     )
 
@@ -486,6 +527,13 @@ def test_admin_can_update_backend_config(monkeypatch, tmp_path):
             "format": "markdown,text",
             "image_output": "off",
         },
+        "llm_polish_enabled": True,
+        "llm_polish_provider": "deepseek",
+        "llm_polish_base_url": "https://api.deepseek.com/v1",
+        "llm_polish_api_key_configured": True,
+        "llm_polish_model": "deepseek-chat",
+        "llm_polish_timeout_seconds": 45.0,
+        "llm_polish_providers": LLM_PROVIDER_EXPECTED,
     }
     saved = config_path.read_text(encoding="utf-8")
     assert '"data_root": "data"' in saved
@@ -501,6 +549,10 @@ def test_admin_can_update_backend_config(monkeypatch, tmp_path):
     assert '"diarize_model": "/models/local-pyannote"' in saved
     assert '"whisperx_backend": "openai"' in saved
     assert '"whisperx_openai_api_key": "test-key"' in saved
+    assert '"llm_polish_enabled": true' in saved
+    assert '"llm_polish_provider": "deepseek"' in saved
+    assert '"llm_polish_api_key": "llm-key"' in saved
+    assert '"llm_polish_model": "deepseek-chat"' in saved
     assert data_root.exists()
 
     upload_response = client.post(
@@ -522,6 +574,62 @@ def test_admin_can_update_backend_config(monkeypatch, tmp_path):
     assert whisperx_runner.config.base_url == "http://localhost:9000/v1"
     assert whisperx_runner.config.config_fields["batch_size"] == 12
     assert "compute_type" not in whisperx_runner.config.config_fields
+    assert whisperx_runner.config.llm_config.enabled is True
+    assert whisperx_runner.config.llm_config.provider == "deepseek"
+    assert whisperx_runner.config.llm_config.model == "deepseek-chat"
+
+
+def test_admin_can_fetch_llm_models_and_check_connection(monkeypatch, tmp_path):
+    client, _, _ = make_client(tmp_path)
+    headers = admin_headers(client)
+    seen: dict[str, object] = {}
+
+    def fake_fetch_llm_models(config):
+        seen["models_config"] = config
+        return ["deepseek-chat", "deepseek-reasoner"]
+
+    monkeypatch.setattr("app.api.routes.fetch_llm_models", fake_fetch_llm_models)
+
+    response = client.post(
+        "/api/admin/llm/models",
+        headers=headers,
+        json={"provider": "deepseek", "api_key": "runtime-key"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "provider": "deepseek",
+        "base_url": "https://api.deepseek.com/v1",
+        "models": ["deepseek-chat", "deepseek-reasoner"],
+        "message": "已拉取 2 个模型。",
+    }
+    assert seen["models_config"].api_key == "runtime-key"
+
+    def fake_check_llm_connection(config):
+        seen["check_config"] = config
+        return True, "连接成功。", ["deepseek-chat"]
+
+    monkeypatch.setattr("app.api.routes.check_llm_connection", fake_check_llm_connection)
+    check_response = client.post(
+        "/api/admin/llm/check",
+        headers=headers,
+        json={
+            "provider": "deepseek",
+            "api_key": "runtime-key",
+            "model": "deepseek-chat",
+        },
+    )
+
+    assert check_response.status_code == 200, check_response.text
+    assert check_response.json() == {
+        "ok": True,
+        "provider": "deepseek",
+        "base_url": "https://api.deepseek.com/v1",
+        "model": "deepseek-chat",
+        "message": "连接成功。",
+        "models": ["deepseek-chat"],
+    }
+    assert seen["check_config"].model == "deepseek-chat"
 
 
 def test_admin_config_update_requires_login(tmp_path):

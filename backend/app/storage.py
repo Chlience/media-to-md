@@ -310,6 +310,7 @@ class JobStorage:
             "md",
             "markdown",
             "markdown_clear",
+            "markdown_llm",
             "html",
             "pdf",
             "png",
@@ -323,6 +324,8 @@ class JobStorage:
             fmt = (
                 "markdown_clear"
                 if name.endswith("_clear.md")
+                else "markdown_llm"
+                if name == "llm_polished.md" or name.endswith("_llm.md")
                 else path.suffix.lstrip(".").lower()
             )
             if fmt not in allowed_formats:
