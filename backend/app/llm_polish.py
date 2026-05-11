@@ -13,6 +13,7 @@ from typing import Any, Mapping
 
 DEFAULT_LLM_PROVIDER = "openai"
 DEFAULT_LLM_TIMEOUT_SECONDS = 60.0
+LLM_CONNECTION_CHECK_TIMEOUT_SECONDS = 10.0
 DEFAULT_LLM_CHUNK_CHARS = 18000
 
 
@@ -121,19 +122,29 @@ def fetch_llm_models(config: LlmPolishConfig) -> list[str]:
 
 def check_llm_connection(config: LlmPolishConfig) -> tuple[bool, str, list[str]]:
     try:
-        models = fetch_llm_models(config)
+        prepared = _prepare_request_config(
+            config, require_model=True, require_enabled=False
+        )
+        check_config = LlmPolishConfig(
+            enabled=prepared.enabled,
+            provider=prepared.provider,
+            base_url=prepared.base_url,
+            api_key=prepared.api_key,
+            model=prepared.model,
+            timeout_seconds=LLM_CONNECTION_CHECK_TIMEOUT_SECONDS,
+            chunk_chars=prepared.chunk_chars,
+        )
+        _check_chat_completion(check_config)
     except Exception as exc:
         return False, str(exc), []
-    model = _optional_text(config.model)
-    if model and models and model not in models:
-        return (
-            True,
-            f"连接成功；已拉取 {len(models)} 个模型，但当前模型不在返回列表中。",
-            models,
-        )
-    if models:
-        return True, f"连接成功；已拉取 {len(models)} 个模型。", models
-    return True, "连接成功；供应商未返回可枚举模型。", models
+    return (
+        True,
+        (
+            f"连接成功；已使用模型 {check_config.model} "
+            "完成 chat/completions 测试（10s 超时）。"
+        ),
+        [],
+    )
 
 
 def polish_job_outputs(
@@ -245,6 +256,24 @@ def _polish_chunk(
     }
     response = _request_json("POST", url, payload, config)
     return _extract_chat_content(response)
+
+
+def _check_chat_completion(config: LlmPolishConfig) -> None:
+    url = _build_openai_compatible_url(config.base_url or "", "chat/completions")
+    payload = {
+        "model": config.model,
+        "messages": [
+            {
+                "role": "system",
+                "content": "You are a connectivity check. Reply with OK only.",
+            },
+            {"role": "user", "content": "ping"},
+        ],
+        "temperature": 0,
+        "max_tokens": 4,
+    }
+    response = _request_json("POST", url, payload, config)
+    _extract_chat_content(response)
 
 
 def _polish_system_prompt(task_type: str) -> str:

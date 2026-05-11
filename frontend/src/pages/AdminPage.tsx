@@ -546,7 +546,7 @@ export function AdminPage() {
         provider: response.provider,
         baseUrl: response.baseUrl,
         model: selectedModel || null,
-        modelCount: response.models.length,
+        modelCount: response.models.length > 0 ? response.models.length : undefined,
       });
     } catch (nextError) {
       const message = trimTrailingPunctuation(errorMessage(nextError));
@@ -579,7 +579,7 @@ export function AdminPage() {
         provider: response.provider,
         baseUrl: response.baseUrl,
         model: selectedModel || null,
-        modelCount: response.models.length,
+        modelCount: response.models.length > 0 ? response.models.length : undefined,
       });
     } catch (nextError) {
       const message = trimTrailingPunctuation(errorMessage(nextError));

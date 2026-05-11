@@ -23,7 +23,7 @@ def test_llm_provider_defaults_resolve_to_openai_compatible_v1():
     )
 
 
-def test_fetch_models_and_connection_check_parse_openai_compatible_payload(monkeypatch):
+def test_fetch_models_parse_openai_compatible_payload(monkeypatch):
     def fake_request_json(method, url, payload, config):
         assert method == "GET"
         assert url == "http://llm.local/v1/models"
@@ -41,10 +41,37 @@ def test_fetch_models_and_connection_check_parse_openai_compatible_payload(monke
     )
 
     assert fetch_llm_models(config) == ["model-a", "model-b"]
+
+
+def test_connection_check_uses_short_chat_completion_request(monkeypatch):
+    seen_payloads = []
+
+    def fake_request_json(method, url, payload, config):
+        assert method == "POST"
+        assert url == "http://llm.local/v1/chat/completions"
+        assert config.api_key == "secret"
+        assert config.timeout_seconds == 10.0
+        assert payload["model"] == "model-a"
+        assert payload["max_tokens"] == 4
+        seen_payloads.append(payload)
+        return {"choices": [{"message": {"content": "OK"}}]}
+
+    monkeypatch.setattr("app.llm_polish._request_json", fake_request_json)
+    config = LlmPolishConfig(
+        enabled=True,
+        provider="custom",
+        base_url="http://llm.local/v1",
+        api_key="secret",
+        model="model-a",
+        timeout_seconds=120,
+    )
+
     ok, message, models = check_llm_connection(config)
     assert ok is True
-    assert "连接成功" in message
-    assert models == ["model-a", "model-b"]
+    assert "chat/completions 测试" in message
+    assert "10s 超时" in message
+    assert models == []
+    assert seen_payloads[0]["messages"][1]["content"] == "ping"
 
 
 def test_polish_job_outputs_creates_markdown_llm_artifact(monkeypatch, tmp_path):

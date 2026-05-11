@@ -276,8 +276,8 @@ describe('hash routing shell', () => {
               provider: 'deepseek',
               base_url: 'https://api.deepseek.com/v1',
               model: 'deepseek-reasoner',
-              message: '连接成功。',
-              models: ['deepseek-chat'],
+              message: '连接成功；已使用模型 deepseek-reasoner 完成 chat/completions 测试（10s 超时）。',
+              models: [],
             }),
             { headers: { 'Content-Type': 'application/json' } },
           );
@@ -305,11 +305,11 @@ describe('hash routing shell', () => {
 
     const llmInfo = await within(configBox as HTMLElement).findByRole('status');
     expect(llmInfo).toHaveTextContent('连接检查通过');
-    expect(llmInfo).toHaveTextContent('连接成功');
+    expect(llmInfo).toHaveTextContent('chat/completions 测试');
     expect(llmInfo).toHaveTextContent('供应商：deepseek');
     expect(llmInfo).toHaveTextContent('接口：https://api.deepseek.com/v1');
     expect(llmInfo).toHaveTextContent('模型：deepseek-reasoner');
-    expect(llmInfo).toHaveTextContent('可选模型：1');
+    expect(llmInfo).not.toHaveTextContent('可选模型：');
   });
 
   it('shows a right-side notice after saving backend config', async () => {
