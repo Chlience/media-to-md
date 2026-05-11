@@ -188,7 +188,6 @@ describe('hash routing shell', () => {
     expect(within(configBox as HTMLElement).queryByLabelText('Min speakers')).not.toBeInTheDocument();
     expect(within(configBox as HTMLElement).queryByLabelText('Max speakers')).not.toBeInTheDocument();
     expect(within(configBox as HTMLElement).queryByLabelText('Speaker embeddings')).not.toBeInTheDocument();
-    expect(within(configBox as HTMLElement).getByText(/OpenAI 模式只显示接口配置/)).toBeInTheDocument();
     fireEvent.change(within(configBox as HTMLElement).getByLabelText('执行方式'), {
       target: { value: 'cli' },
     });

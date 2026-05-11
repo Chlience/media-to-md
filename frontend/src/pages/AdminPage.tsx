@@ -833,7 +833,6 @@ export function AdminPage() {
                       </div>
                       {whisperxBackend === 'openai' ? (
                         <>
-                          <div className="field field-full"><div className="status-note">OpenAI 模式只显示接口配置，以及会随 multipart 请求转发给远端服务的参数；设备、缓存和 compute type 由远端服务控制。</div></div>
                           <div className="field"><label className="label" htmlFor="cfg-openai-base-url">OpenAI Base URL</label><input id="cfg-openai-base-url" className="input mono" value={openaiBaseUrl} placeholder="http://localhost:9000/v1" onChange={(event) => { setOpenaiBaseUrl(event.target.value); setOpenaiModels([]); }} /></div>
                           <div className="field"><label className="label" htmlFor="cfg-openai-api-key">OpenAI API Key</label><input id="cfg-openai-api-key" className="input mono" type="password" value={openaiApiKey} placeholder={openaiApiKeyConfigured ? '已配置；留空保持不变' : '未配置则不发送 Authorization'} onChange={(event) => { setOpenaiApiKey(event.target.value); setOpenaiModels([]); }} /></div>
                           <div className="field"><label className="label" htmlFor="cfg-openai-timeout">OpenAI timeout seconds</label><input id="cfg-openai-timeout" className="input mono" value={openaiTimeoutSeconds} onChange={(event) => { setOpenaiTimeoutSeconds(event.target.value); setOpenaiModels([]); }} /></div>
