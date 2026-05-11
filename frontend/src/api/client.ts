@@ -174,6 +174,24 @@ export class WhisperXApiClient {
     return parseLlmModelsResponse(await response.json());
   }
 
+  async fetchWhisperxOpenaiModels(params: {
+    adminToken: string;
+    baseUrl?: string | null;
+    apiKey?: string | null;
+    timeoutSeconds?: number;
+  }): Promise<LlmModelsResponse> {
+    const response = await this.request('/admin/whisperx-openai/models', {
+      method: 'POST',
+      bearerToken: params.adminToken,
+      jsonBody: {
+        base_url: blankToNull(params.baseUrl),
+        api_key: blankToNull(params.apiKey),
+        timeout_seconds: params.timeoutSeconds ?? null,
+      },
+    });
+    return parseLlmModelsResponse(await response.json());
+  }
+
   async checkLlmConnection(params: {
     adminToken: string;
     provider?: string | null;

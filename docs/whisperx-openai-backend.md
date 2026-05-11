@@ -60,6 +60,11 @@ export WHISPERX_OPENAI_ARGS_JSON='{"batch_size":8}'
 
 Media-to-MD 最终会调用 `/v1/audio/transcriptions`。
 
+管理页拉取 WhisperX OpenAI 模型时会按 LLM 润色同样的 OpenAI-compatible 规则请求：
+
+- 先把配置地址规范化为 OpenAI Base URL（没有 `/v1` 时补上 `/v1`，如果填了 `/audio/transcriptions` 或 `/models` 会先还原到 Base URL）。
+- 再访问 `OpenAI Base URL + /models`。
+
 ## 运行时进度
 
 OpenAI 音频转写接口是同步阻塞接口，标准协议没有任务进度字段。为了兼容其他 OpenAI-compatible 服务，Media-to-MD 不会向 multipart 表单添加任何非标准进度字段。
@@ -125,5 +130,6 @@ OpenAI 兼容接口直接返回 SRT；Media-to-MD 会把它保存为字幕并派
 - OpenAI API Key：留空会保持已配置值不变。
 - OpenAI timeout seconds。
 - 清除 OpenAI Key。
+- 拉取 WhisperX 模型：请求 `OpenAI Base URL + /models`，返回后可在右侧下拉框选择，并自动写入上方默认模型字段。
 
 保存后会写回 `backend/config.json`，并重建后端 runner。

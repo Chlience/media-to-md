@@ -62,7 +62,11 @@ from ..models import (
 )
 from ..runtime_progress import whisperx_runtime_phase
 from ..storage import JobStorage, StorageError
-from ..whisperx_openai_runner import JobStorageOpenAIWhisperXRunner
+from ..whisperx_openai_runner import (
+    JobStorageOpenAIWhisperXRunner,
+    fetch_openai_model_ids,
+    normalize_openai_models_base_url,
+)
 from ..whisperx_runner import ALLOWED_MODELS, JobStorageWhisperXRunner
 
 router = APIRouter(prefix="/api")
@@ -407,6 +411,42 @@ def admin_llm_check(
             message=str(exc),
             models=[],
         )
+
+
+@router.post("/admin/whisperx-openai/models", response_model=LlmModelsResponse)
+def admin_whisperx_openai_models(
+    payload: LlmConnectionRequest,
+    settings: Annotated[Settings, Depends(get_settings_dep)],
+    _: Annotated[str, Depends(require_admin)],
+) -> LlmModelsResponse:
+    base_url = payload.base_url or settings.whisperx_openai_base_url
+    if not base_url:
+        raise HTTPException(status_code=400, detail="OpenAI Base URL 不能为空。")
+    api_key = (
+        payload.api_key
+        if payload.api_key is not None
+        else settings.whisperx_openai_api_key
+    )
+    timeout_seconds = (
+        payload.timeout_seconds
+        if payload.timeout_seconds is not None
+        else settings.whisperx_openai_timeout_seconds
+    )
+    try:
+        normalized_base_url = normalize_openai_models_base_url(base_url)
+        models = fetch_openai_model_ids(
+            normalized_base_url,
+            api_key=api_key,
+            timeout_seconds=float(timeout_seconds),
+        )
+        return LlmModelsResponse(
+            provider="whisperx-openai",
+            base_url=normalized_base_url,
+            models=models,
+            message=f"已拉取 {len(models)} 个模型。" if models else "远端未返回可枚举模型。",
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/admin/login", response_model=AdminTokenResponse)

@@ -18,9 +18,12 @@ from app.whisperx_openai_runner import (
     OpenAIWhisperXRunnerConfig,
     build_openai_form_fields,
     build_openai_health_url,
+    build_openai_models_url,
     build_openai_runtime_progress_url,
     build_openai_runtime_progress_url_from_template,
     build_openai_transcriptions_url,
+    extract_openai_model_ids,
+    fetch_openai_model_ids,
 )
 from app.whisperx_runner import WhisperXOptions
 
@@ -68,6 +71,86 @@ class OpenAIWhisperXRunnerTests(unittest.TestCase):
                 "job 1",
             ),
             "http://localhost:9000/runtime/progress/job%201",
+        )
+
+    def test_builds_models_url_from_openai_base_url(self):
+        self.assertEqual(
+            build_openai_models_url("http://localhost:9000/v1"),
+            "http://localhost:9000/v1/models",
+        )
+        self.assertEqual(
+            build_openai_models_url("http://localhost:9000/v1/audio/transcriptions"),
+            "http://localhost:9000/v1/models",
+        )
+        self.assertEqual(
+            build_openai_models_url("http://localhost:9000/v1/models"),
+            "http://localhost:9000/v1/models",
+        )
+        self.assertEqual(
+            build_openai_models_url("http://localhost:9000"),
+            "http://localhost:9000/v1/models",
+        )
+
+    def test_fetch_openai_model_ids_uses_base_url_models_endpoint(self):
+        captured = {}
+
+        class FakeResponse:
+            status = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return None
+
+            def read(self):
+                return json.dumps(
+                    {"data": [{"id": "faster-whisper-large-v2"}]}
+                ).encode("utf-8")
+
+        def fake_urlopen(http_request, timeout):
+            captured["url"] = http_request.full_url
+            captured["headers"] = dict(http_request.header_items())
+            captured["timeout"] = timeout
+            return FakeResponse()
+
+        with mock.patch(
+            "app.whisperx_openai_runner.urllib.request.urlopen",
+            side_effect=fake_urlopen,
+        ):
+            models = fetch_openai_model_ids(
+                "http://localhost:9000/v1",
+                api_key="secret",
+                timeout_seconds=30,
+            )
+
+        self.assertEqual(models, ["faster-whisper-large-v2"])
+        self.assertEqual(captured["url"], "http://localhost:9000/v1/models")
+        self.assertEqual(captured["timeout"], 10.0)
+        self.assertEqual(captured["headers"].get("Authorization"), "Bearer secret")
+
+    def test_extract_openai_model_ids_accepts_openai_compatible_shapes(self):
+        self.assertEqual(
+            extract_openai_model_ids(
+                json.dumps(
+                    {
+                        "data": [
+                            {"id": "model-a"},
+                            {"id": "model-b"},
+                            {"id": "model-a"},
+                        ]
+                    }
+                ).encode("utf-8")
+            ),
+            ["model-a", "model-b"],
+        )
+        self.assertEqual(
+            extract_openai_model_ids(
+                json.dumps({"models": ["model-c", {"id": "model-d"}]}).encode(
+                    "utf-8"
+                )
+            ),
+            ["model-c", "model-d"],
         )
 
     def test_builds_openai_fields_from_job_options_and_config(self):

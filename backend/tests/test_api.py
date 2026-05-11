@@ -661,6 +661,45 @@ def test_admin_can_fetch_llm_models_and_check_connection(monkeypatch, tmp_path):
     assert seen["check_config"].model == "deepseek-chat"
 
 
+def test_admin_can_fetch_whisperx_openai_models(monkeypatch, tmp_path):
+    client, _, _ = make_client(tmp_path)
+    headers = admin_headers(client)
+    seen: dict[str, object] = {}
+
+    def fake_fetch_openai_model_ids(base_url, *, api_key=None, timeout_seconds=10.0):
+        seen["base_url"] = base_url
+        seen["api_key"] = api_key
+        seen["timeout_seconds"] = timeout_seconds
+        return ["faster-whisper-large-v2"]
+
+    monkeypatch.setattr(
+        "app.api.routes.fetch_openai_model_ids", fake_fetch_openai_model_ids
+    )
+
+    response = client.post(
+        "/api/admin/whisperx-openai/models",
+        headers=headers,
+        json={
+            "base_url": "http://localhost:9000/v1",
+            "api_key": "runtime-key",
+            "timeout_seconds": 30,
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "provider": "whisperx-openai",
+        "base_url": "http://localhost:9000/v1",
+        "models": ["faster-whisper-large-v2"],
+        "message": "已拉取 1 个模型。",
+    }
+    assert seen == {
+        "base_url": "http://localhost:9000/v1",
+        "api_key": "runtime-key",
+        "timeout_seconds": 30.0,
+    }
+
+
 def test_admin_config_update_requires_login(tmp_path):
     client, _, _ = make_client(tmp_path)
 

@@ -122,6 +122,27 @@ def build_openai_health_url(base_url: str) -> str:
     return f"{build_openai_service_root_url(base_url)}/health"
 
 
+def normalize_openai_models_base_url(base_url: str) -> str:
+    """Normalize the configured OpenAI Base URL before appending ``/models``."""
+
+    normalized = base_url.strip().rstrip("/")
+    if not normalized:
+        raise WhisperXRunnerError(
+            WhisperXErrorKind.VALIDATION,
+            "OpenAI Base URL must not be empty when requesting models.",
+        )
+    for suffix in ("/audio/transcriptions", "/models"):
+        if normalized.endswith(suffix):
+            normalized = normalized[: -len(suffix)].rstrip("/")
+    if not normalized.endswith("/v1"):
+        normalized = f"{normalized}/v1"
+    return normalized
+
+
+def build_openai_models_url(base_url: str) -> str:
+    return f"{normalize_openai_models_base_url(base_url)}/models"
+
+
 def build_openai_runtime_progress_url(base_url: str, request_id: str) -> str:
     encoded = urllib.parse.quote(request_id, safe="")
     return f"{build_openai_service_root_url(base_url)}/runtime/progress/{encoded}"
@@ -267,6 +288,33 @@ def _extract_error_message(payload: bytes) -> str:
     return text
 
 
+def extract_openai_model_ids(payload: bytes) -> list[str]:
+    """Extract model ids from OpenAI-compatible ``/models`` payloads."""
+
+    try:
+        data = json.loads(payload.decode("utf-8"))
+    except json.JSONDecodeError:
+        return []
+    raw_models: Any
+    if isinstance(data, Mapping):
+        raw_models = data.get("data")
+        if raw_models is None:
+            raw_models = data.get("models")
+    else:
+        raw_models = data
+    if not isinstance(raw_models, list):
+        return []
+    models: list[str] = []
+    for item in raw_models:
+        model_id = item.get("id") if isinstance(item, Mapping) else item
+        if not isinstance(model_id, str):
+            continue
+        model_id = model_id.strip()
+        if model_id and model_id not in models:
+            models.append(model_id)
+    return models
+
+
 def _response_status(response: Any) -> int:
     status = getattr(response, "status", None)
     if isinstance(status, int):
@@ -275,6 +323,34 @@ def _response_status(response: Any) -> int:
     if callable(getcode):
         return int(getcode())
     return 200
+
+
+def fetch_openai_model_ids(
+    base_url: str,
+    *,
+    api_key: str | None = None,
+    timeout_seconds: float = 10.0,
+) -> list[str]:
+    """Fetch model ids from an OpenAI-compatible WhisperX service."""
+
+    models_url = build_openai_models_url(base_url)
+    headers = {"Accept": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    http_request = urllib.request.Request(models_url, headers=headers, method="GET")
+    with urllib.request.urlopen(  # noqa: S310 - configured local/internal endpoint.
+        http_request,
+        timeout=min(max(float(timeout_seconds), 1.0), 10.0),
+    ) as response:
+        status = _response_status(response)
+        body = response.read()
+    if status < 200 or status >= 300:
+        raise WhisperXRunnerError(
+            WhisperXErrorKind.PROCESS,
+            f"OpenAI-compatible /models request failed with HTTP {status}: {_extract_error_message(body)}",
+            status,
+        )
+    return extract_openai_model_ids(body)
 
 
 def write_openai_response_artifacts(srt_content: str, output_dir: Path) -> None:

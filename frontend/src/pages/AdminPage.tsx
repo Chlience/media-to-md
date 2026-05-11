@@ -174,6 +174,8 @@ export function AdminPage() {
   const [openaiApiKeyConfigured, setOpenaiApiKeyConfigured] = useState(false);
   const [openaiClearApiKey, setOpenaiClearApiKey] = useState(false);
   const [openaiTimeoutSeconds, setOpenaiTimeoutSeconds] = useState(defaultOpenaiTimeoutSeconds);
+  const [openaiModels, setOpenaiModels] = useState<string[]>([]);
+  const [openaiModelsBusy, setOpenaiModelsBusy] = useState(false);
   const [nltkDataDir, setNltkDataDir] = useState('');
   const [modelCacheOnly, setModelCacheOnly] = useState(defaultModelCacheOnly);
   const [cliWhisperxArgs, setCliWhisperxArgs] = useState('{}');
@@ -267,6 +269,7 @@ export function AdminPage() {
     setOpenaiApiKeyConfigured(nextConfig.whisperxOpenaiApiKeyConfigured);
     setOpenaiClearApiKey(false);
     setOpenaiTimeoutSeconds(String(nextConfig.whisperxOpenaiTimeoutSeconds || 3600));
+    setOpenaiModels([]);
     setNltkDataDir(nextConfig.nltkDataDir ?? '');
     setModelCacheOnly(nextConfig.modelCacheOnly);
     setCliWhisperxArgs(jsonPreview(nextConfig.whisperxCliArgsConfig));
@@ -482,6 +485,7 @@ export function AdminPage() {
       setOpenaiApiKeyConfigured(nextConfig.whisperxOpenaiApiKeyConfigured);
       setOpenaiClearApiKey(false);
       setOpenaiTimeoutSeconds(String(nextConfig.whisperxOpenaiTimeoutSeconds || 3600));
+      setOpenaiModels([]);
       setCliWhisperxArgs(jsonPreview(nextConfig.whisperxCliArgsConfig));
       setOpenaiWhisperxArgs(jsonPreview(nextConfig.whisperxOpenaiArgsConfig));
       setPdfArgs(jsonPreview(nextConfig.pdfArgsConfig));
@@ -556,6 +560,48 @@ export function AdminPage() {
       setLlmNotice({ kind: 'error', message: message || '模型拉取失败' });
     } finally {
       setLlmBusy(false);
+    }
+  };
+
+  const parsedOpenaiTimeoutOrDefault = () => {
+    const parsed = Number(openaiTimeoutSeconds || defaultOpenaiTimeoutSeconds);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      throw new Error('OpenAI timeout seconds 必须是大于 0 的数字。');
+    }
+    return parsed;
+  };
+
+  const loadWhisperxOpenaiModels = async () => {
+    if (!token) return;
+    setOpenaiModelsBusy(true);
+    setConfigNotice(null);
+    try {
+      const response = await api.fetchWhisperxOpenaiModels({
+        adminToken: token,
+        baseUrl: openaiBaseUrl,
+        apiKey: openaiApiKey,
+        timeoutSeconds: parsedOpenaiTimeoutOrDefault(),
+      });
+      setOpenaiBaseUrl(response.baseUrl);
+      setOpenaiModels(response.models);
+      const selectedModel = response.models.includes(openaiModel.trim())
+        ? openaiModel.trim()
+        : response.models[0] || '';
+      if (selectedModel) setOpenaiModel(selectedModel);
+      setConfigNotice({
+        kind: 'success',
+        title: response.models.length > 0 ? 'WhisperX 模型列表已更新' : 'WhisperX 模型列表为空',
+        message: response.message,
+        provider: response.provider,
+        baseUrl: response.baseUrl,
+        model: selectedModel || null,
+        modelCount: response.models.length > 0 ? response.models.length : undefined,
+      });
+    } catch (nextError) {
+      const message = trimTrailingPunctuation(errorMessage(nextError));
+      setConfigNotice({ kind: 'error', message: message || 'WhisperX 模型拉取失败' });
+    } finally {
+      setOpenaiModelsBusy(false);
     }
   };
 
@@ -781,14 +827,43 @@ export function AdminPage() {
                   <div className="config-inner">
                     <div className="form-grid">
                       <div className="field"><label className="label" htmlFor="cfg-whisperx-backend">执行方式</label><select id="cfg-whisperx-backend" className="select" value={whisperxBackend} onChange={(event) => setWhisperxBackend(event.target.value as WhisperxBackend)}><option value="cli">本机 CLI</option><option value="openai">OpenAI 兼容接口</option></select></div>
-                      <div className="field"><label className="label" htmlFor="cfg-model">默认模型</label><input id="cfg-model" className="input" value={visibleModel} placeholder={visibleModelPlaceholder} onChange={(event) => setVisibleModel(event.target.value)} /></div>
+                      <div className="field">
+                        <label className="label" htmlFor="cfg-model">默认模型</label>
+                        <input id="cfg-model" className="input" value={visibleModel} list={whisperxBackend === 'openai' ? 'cfg-openai-model-list' : undefined} placeholder={visibleModelPlaceholder} onChange={(event) => setVisibleModel(event.target.value)} />
+                        {whisperxBackend === 'openai' ? <datalist id="cfg-openai-model-list">{openaiModels.map((model) => <option key={model} value={model} />)}</datalist> : null}
+                      </div>
                       {whisperxBackend === 'openai' ? (
                         <>
                           <div className="field field-full"><div className="status-note">OpenAI 模式只显示接口配置，以及会随 multipart 请求转发给远端服务的参数；设备、缓存和 compute type 由远端服务控制。</div></div>
-                          <div className="field"><label className="label" htmlFor="cfg-openai-base-url">OpenAI Base URL</label><input id="cfg-openai-base-url" className="input mono" value={openaiBaseUrl} placeholder="http://localhost:9000/v1" onChange={(event) => setOpenaiBaseUrl(event.target.value)} /></div>
-                          <div className="field"><label className="label" htmlFor="cfg-openai-api-key">OpenAI API Key</label><input id="cfg-openai-api-key" className="input mono" type="password" value={openaiApiKey} placeholder={openaiApiKeyConfigured ? '已配置；留空保持不变' : '未配置则不发送 Authorization'} onChange={(event) => setOpenaiApiKey(event.target.value)} /></div>
-                          <div className="field"><label className="label" htmlFor="cfg-openai-timeout">OpenAI timeout seconds</label><input id="cfg-openai-timeout" className="input mono" value={openaiTimeoutSeconds} onChange={(event) => setOpenaiTimeoutSeconds(event.target.value)} /></div>
+                          <div className="field"><label className="label" htmlFor="cfg-openai-base-url">OpenAI Base URL</label><input id="cfg-openai-base-url" className="input mono" value={openaiBaseUrl} placeholder="http://localhost:9000/v1" onChange={(event) => { setOpenaiBaseUrl(event.target.value); setOpenaiModels([]); }} /></div>
+                          <div className="field"><label className="label" htmlFor="cfg-openai-api-key">OpenAI API Key</label><input id="cfg-openai-api-key" className="input mono" type="password" value={openaiApiKey} placeholder={openaiApiKeyConfigured ? '已配置；留空保持不变' : '未配置则不发送 Authorization'} onChange={(event) => { setOpenaiApiKey(event.target.value); setOpenaiModels([]); }} /></div>
+                          <div className="field"><label className="label" htmlFor="cfg-openai-timeout">OpenAI timeout seconds</label><input id="cfg-openai-timeout" className="input mono" value={openaiTimeoutSeconds} onChange={(event) => { setOpenaiTimeoutSeconds(event.target.value); setOpenaiModels([]); }} /></div>
                           <div className="field"><label className="label" htmlFor="cfg-openai-clear-key">清除 OpenAI Key</label><select id="cfg-openai-clear-key" className="select" value={String(openaiClearApiKey)} onChange={(event) => setOpenaiClearApiKey(event.target.value === 'true')}><option value="false">false</option><option value="true">true</option></select></div>
+                          <div className="field field-full">
+                            <div className="llm-actions-row">
+                              <div className="btn-row llm-action-buttons">
+                                <button className="btn" type="button" disabled={!signedIn || openaiModelsBusy} onClick={() => void loadWhisperxOpenaiModels()}>
+                                  拉取 WhisperX 模型
+                                </button>
+                              </div>
+                              {openaiModels.length > 0 ? (
+                                <div className="llm-model-picker">
+                                  <label className="label" htmlFor="cfg-openai-model-select">选择已拉取 WhisperX 模型</label>
+                                  <select
+                                    id="cfg-openai-model-select"
+                                    className="select mono"
+                                    value={openaiModels.includes(openaiModel) ? openaiModel : ''}
+                                    onChange={(event) => setOpenaiModel(event.target.value)}
+                                  >
+                                    <option value="" disabled>选择模型（{openaiModels.length} 个）</option>
+                                    {openaiModels.map((model) => (
+                                      <option key={model} value={model}>{model}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
                           <div className="field"><label className="label" htmlFor="cfg-batch-size">Batch size</label><input id="cfg-batch-size" className="input mono" value={whisperxArgValue('batch_size', defaultWhisperxArgDisplay.batchSize)} placeholder="远端默认" onChange={(event) => setWhisperxArg('batch_size', event.target.value)} /></div>
                           <div className="field"><label className="label" htmlFor="cfg-chunk-size">Chunk size</label><input id="cfg-chunk-size" className="input mono" value={whisperxArgValue('chunk_size', defaultWhisperxArgDisplay.chunkSize)} placeholder="远端默认" onChange={(event) => setWhisperxArg('chunk_size', event.target.value)} /></div>
                           <div className="field"><label className="label" htmlFor="cfg-no-align">No align</label><select id="cfg-no-align" className="select" value={String(whisperxArgBooleanValue('no_align'))} onChange={(event) => setWhisperxBooleanArg('no_align', event.target.value)}><option value="">远端默认</option><option value="true">true</option><option value="false">false</option></select></div>
