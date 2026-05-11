@@ -122,7 +122,13 @@ CLI 参数会转换为对应的 WhisperX CLI flag，例如：
 
 ### WhisperX OpenAI 兼容模式
 
-设置 `whisperx_backend = "openai"` 后，音视频任务会调用 `whisperx_openai_base_url` 对应的 `/v1/audio/transcriptions`，固定请求 `response_format=srt`，并把返回的 `result.srt` 删除序号行和时间行后派生 `result.txt`。详见 `docs/whisperx-openai-backend.md`。
+设置 `whisperx_backend = "openai"` 后，音视频任务会调用 `whisperx_openai_base_url` 对应的 `/v1/audio/transcriptions`，固定请求 `response_format=srt` 并启用说话人分离；返回的 `result.srt` 会作为字幕保存，`result.txt` 则由该 SRT 删除序号行和时间行后派生。后端不再向远端请求 TXT。
+
+管理页拉取 WhisperX OpenAI 模型时会请求 `OpenAI Base URL + /models`，返回后可在下拉框选择，并自动写入 OpenAI 默认模型字段。实际转写时，`whisperx_openai_model` 必须是远端 `/v1/models` 暴露且接受的 id。
+
+OpenAI 模式只转发 multipart 任务级参数：`batch_size`, `chunk_size`, `no_align`, `min_speakers`, `max_speakers`, `speaker_embeddings`。设备、compute type、缓存目录、`diarize_model` 和 `align_model` 均由远端 WhisperX 服务控制；Media-to-MD 不转发这些模型加载/运行环境参数。对齐模型由远端 WhisperX 按检测语言选择，Media-to-MD 只保留 `no_align` 开关。
+
+如果远端 `/health` 声明 `runtime_progress` 能力，后端会按声明的 request-id header 发送任务 id，并轮询 sidecar 端点，把远端返回的阶段状态写入任务进度；没有该能力的 OpenAI 兼容服务仍按普通同步接口执行。详见 `docs/whisperx-openai-backend.md`。
 
 ### 允许的 PDF 参数
 

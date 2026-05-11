@@ -27,8 +27,10 @@ It is designed for a personal workstation or an internal server. Public SaaS hos
 
 ## Features
 
-- Audio/video transcription through either a local `whisperx` CLI or an OpenAI-compatible WhisperX HTTP service.
+- Audio/video transcription through either a local `whisperx` CLI or an OpenAI-compatible WhisperX HTTP service, producing SRT plus TXT derived from the returned SRT.
+- WhisperX OpenAI mode supports admin-side `/models` discovery and runtime stage display when the remote service advertises the progress sidecar.
 - PDF parsing through a local `opendataloader-pdf` CLI, including raw Markdown/TXT and cleaned `*_clear.md` output.
+- Optional LLM polishing can be enabled separately for WhisperX transcripts and OpenDataLoader PDF outputs.
 - Web workbench for drag-and-drop uploads, task polling, status display, and `artifacts.zip` downloads.
 - Admin page for single-admin login, task list, details, events, logs, deletion, and backend runtime configuration.
 - Local filesystem storage for uploads, outputs, logs, events, and manifests.
@@ -103,6 +105,14 @@ After starting that service, point `whisperx_openai_base_url` to its `/v1` endpo
 }
 ```
 
+Use a model id returned by the remote `/v1/models` endpoint. The admin page can request `OpenAI Base URL + /models`, show the returned ids in a selector, and write the selected id back to `whisperx_openai_model`.
+
+In OpenAI mode, Media-to-MD sends synchronous `/v1/audio/transcriptions` multipart requests with `response_format=srt` and diarization enabled, then derives `result.txt` from `result.srt` by removing SRT sequence and timestamp lines. It forwards only request-level options that belong in the remote multipart request: `batch_size`, `chunk_size`, `no_align`, `min_speakers`, `max_speakers`, and `speaker_embeddings`.
+
+Runtime and model-loading details stay on the WhisperX service: device, compute type, cache paths, diarization model, and align model are not forwarded by Media-to-MD. The align model is selected by WhisperX from the detected language unless the remote service itself is configured otherwise.
+
+If the remote service is `whisperx-openai-server` and `/health` advertises runtime progress, Media-to-MD attaches the configured request-id header and polls the sidecar progress endpoint to show the current stage and current-stage progress. Other OpenAI-compatible transcription services remain usable without that sidecar.
+
 ### 3. Configure the backend
 
 ```bash
@@ -131,8 +141,10 @@ Common backend config keys:
 | `whisperx_model_dir` | Local model cache directory |
 | `model_cache_only` | Whether to use local model cache only |
 | `whisperx_cli_args` | Local CLI mode arguments |
-| `whisperx_openai_args` | Per-request multipart arguments forwarded to the OpenAI-compatible service |
+| `whisperx_openai_args` | OpenAI multipart overrides: `batch_size`, `chunk_size`, `no_align`, `min_speakers`, `max_speakers`, `speaker_embeddings` |
 | `opendataloader_pdf_args` | PDF runner arguments |
+| `whisperx_llm_polish_enabled` / `pdf_llm_polish_enabled` | Separate backend-controlled LLM polishing switches for WhisperX and PDF tasks |
+| `llm_polish_*` | Shared LLM polishing provider, base URL, API key, model, and timeout |
 | `admin_username` / `admin_password` | Admin page credentials |
 
 The complete reference is `backend/config.example.json`. Saving settings from the admin page writes back to `backend/config.json`.
