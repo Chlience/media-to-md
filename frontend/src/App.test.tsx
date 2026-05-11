@@ -99,13 +99,14 @@ describe('hash routing shell', () => {
     fireEvent.change(defaultModelInput, { target: { value: 'medium' } });
     expect(defaultModelInput).toHaveValue('medium');
     expect(within(configBox as HTMLElement).getByLabelText('Device')).toHaveValue('');
-    expect(within(configBox as HTMLElement).getByLabelText('Compute type')).toHaveValue('default');
-    expect(within(configBox as HTMLElement).getByLabelText('Batch size')).toHaveValue('8');
+    expect(within(configBox as HTMLElement).getByLabelText('Compute type')).toHaveValue('');
+    expect(within(configBox as HTMLElement).getByLabelText('Batch size')).toHaveValue('');
+    expect(within(configBox as HTMLElement).getByLabelText('Batch size')).toHaveAttribute('placeholder', '后端默认');
     fireEvent.change(within(configBox as HTMLElement).getByLabelText('Batch size'), {
       target: { value: '6' },
     });
     expect(within(configBox as HTMLElement).getByLabelText('Batch size')).toHaveValue('6');
-    expect(within(configBox as HTMLElement).getByLabelText('No align')).toHaveValue('false');
+    expect(within(configBox as HTMLElement).getByLabelText('No align')).toHaveValue('');
     expect(within(configBox as HTMLElement).getByLabelText('Min speakers')).toBeInTheDocument();
     expect(within(configBox as HTMLElement).getByLabelText('Max speakers')).toBeInTheDocument();
     expect(within(configBox as HTMLElement).getByLabelText('Speaker embeddings')).toBeInTheDocument();
@@ -122,12 +123,13 @@ describe('hash routing shell', () => {
     expect(within(configBox as HTMLElement).getByLabelText('OpenAI Base URL')).toBeInTheDocument();
     expect(within(configBox as HTMLElement).getByLabelText('OpenAI API Key')).toBeInTheDocument();
     expect(within(configBox as HTMLElement).getByLabelText('OpenAI timeout seconds')).toHaveValue('3600');
-    expect(within(configBox as HTMLElement).getByLabelText('Batch size')).toHaveValue('8');
+    expect(within(configBox as HTMLElement).getByLabelText('Batch size')).toHaveValue('');
+    expect(within(configBox as HTMLElement).getByLabelText('Batch size')).toHaveAttribute('placeholder', '远端默认');
     fireEvent.change(within(configBox as HTMLElement).getByLabelText('Batch size'), {
       target: { value: '12' },
     });
     expect(within(configBox as HTMLElement).getByLabelText('Batch size')).toHaveValue('12');
-    expect(within(configBox as HTMLElement).getByLabelText('No align')).toHaveValue('false');
+    expect(within(configBox as HTMLElement).getByLabelText('No align')).toHaveValue('');
     expect(within(configBox as HTMLElement).queryByLabelText('Device')).not.toBeInTheDocument();
     expect(within(configBox as HTMLElement).queryByLabelText('Compute type')).not.toBeInTheDocument();
     expect(within(configBox as HTMLElement).queryByLabelText('仅使用本地缓存')).not.toBeInTheDocument();
