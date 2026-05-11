@@ -273,7 +273,15 @@ def _check_chat_completion(config: LlmPolishConfig) -> None:
         "max_tokens": 4,
     }
     response = _request_json("POST", url, payload, config)
-    _extract_chat_content(response)
+    _assert_chat_completion_response(response)
+
+
+def _assert_chat_completion_response(payload: Mapping[str, Any]) -> None:
+    choices = payload.get("choices")
+    if not isinstance(choices, list) or not choices:
+        raise LlmPolishError("LLM 接口返回缺少 chat completion choices。")
+    if not isinstance(choices[0], Mapping):
+        raise LlmPolishError("LLM 接口返回 choices 格式不正确。")
 
 
 def _polish_system_prompt(task_type: str) -> str:

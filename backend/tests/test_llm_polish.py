@@ -74,6 +74,29 @@ def test_connection_check_uses_short_chat_completion_request(monkeypatch):
     assert seen_payloads[0]["messages"][1]["content"] == "ping"
 
 
+def test_connection_check_accepts_empty_chat_completion_content(monkeypatch):
+    def fake_request_json(method, url, payload, config):
+        assert method == "POST"
+        assert url == "http://llm.local/v1/chat/completions"
+        assert config.timeout_seconds == 10.0
+        return {"choices": [{"message": {"content": ""}, "finish_reason": "stop"}]}
+
+    monkeypatch.setattr("app.llm_polish._request_json", fake_request_json)
+    ok, message, models = check_llm_connection(
+        LlmPolishConfig(
+            enabled=True,
+            provider="custom",
+            base_url="http://llm.local/v1",
+            api_key="secret",
+            model="model-a",
+        )
+    )
+
+    assert ok is True
+    assert "chat/completions 测试" in message
+    assert models == []
+
+
 def test_polish_job_outputs_creates_markdown_llm_artifact(monkeypatch, tmp_path):
     seen_payloads = []
 
