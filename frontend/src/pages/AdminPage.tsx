@@ -76,6 +76,11 @@ type TaskTypeView = (typeof taskTypeViews)[number]['value'];
 type ConfigNotice = {
   kind: 'success' | 'error';
   message: string;
+  title?: string;
+  provider?: string;
+  baseUrl?: string | null;
+  model?: string | null;
+  modelCount?: number;
 } | null;
 
 function errorMessage(error: unknown): string {
@@ -532,8 +537,17 @@ export function AdminPage() {
       });
       setLlmBaseUrl(response.baseUrl);
       setLlmModels(response.models);
+      const selectedModel = llmModel.trim() || response.models[0] || '';
       if (!llmModel.trim() && response.models[0]) setLlmModel(response.models[0]);
-      setLlmNotice({ kind: 'success', message: response.message });
+      setLlmNotice({
+        kind: 'success',
+        title: response.models.length > 0 ? '模型列表已更新' : '模型列表为空',
+        message: response.message,
+        provider: response.provider,
+        baseUrl: response.baseUrl,
+        model: selectedModel || null,
+        modelCount: response.models.length,
+      });
     } catch (nextError) {
       const message = trimTrailingPunctuation(errorMessage(nextError));
       setLlmNotice({ kind: 'error', message: message || '模型拉取失败' });
@@ -557,9 +571,15 @@ export function AdminPage() {
       });
       if (response.baseUrl) setLlmBaseUrl(response.baseUrl);
       if (response.models.length > 0) setLlmModels(response.models);
+      const selectedModel = response.model?.trim() || llmModel.trim();
       setLlmNotice({
         kind: response.ok ? 'success' : 'error',
+        title: response.ok ? '连接检查通过' : '连接检查失败',
         message: response.message,
+        provider: response.provider,
+        baseUrl: response.baseUrl,
+        model: selectedModel || null,
+        modelCount: response.models.length,
       });
     } catch (nextError) {
       const message = trimTrailingPunctuation(errorMessage(nextError));
@@ -838,20 +858,57 @@ export function AdminPage() {
                       <div className="field"><label className="label" htmlFor="cfg-llm-model">模型</label><input id="cfg-llm-model" className="input mono" value={llmModel} list="cfg-llm-model-list" placeholder="先拉取或手动填写模型名" onChange={(event) => setLlmModel(event.target.value)} /><datalist id="cfg-llm-model-list">{llmModels.map((model) => <option key={model} value={model} />)}</datalist></div>
                       <div className="field"><label className="label" htmlFor="cfg-llm-timeout">LLM timeout seconds</label><input id="cfg-llm-timeout" className="input mono" value={llmTimeoutSeconds} onChange={(event) => setLlmTimeoutSeconds(event.target.value)} /></div>
                       <div className="field field-full">
-                        <div className="btn-row">
-                          <button className="btn" type="button" disabled={!signedIn || llmBusy} onClick={() => void loadLlmModels()}>
-                            拉取模型
-                          </button>
-                          <button className="btn" type="button" disabled={!signedIn || llmBusy} onClick={() => void checkLlmProviderConnection()}>
-                            连接检查
-                          </button>
+                        <div className="llm-actions-row">
+                          <div className="btn-row llm-action-buttons">
+                            <button className="btn" type="button" disabled={!signedIn || llmBusy} onClick={() => void checkLlmProviderConnection()}>
+                              连接检查
+                            </button>
+                            <button className="btn" type="button" disabled={!signedIn || llmBusy} onClick={() => void loadLlmModels()}>
+                              拉取模型
+                            </button>
+                          </div>
+                          {llmModels.length > 0 ? (
+                            <div className="llm-model-picker">
+                              <label className="label" htmlFor="cfg-llm-model-select">选择已拉取模型</label>
+                              <select
+                                id="cfg-llm-model-select"
+                                className="select mono"
+                                value={llmModels.includes(llmModel) ? llmModel : ''}
+                                onChange={(event) => setLlmModel(event.target.value)}
+                              >
+                                <option value="" disabled>选择模型（{llmModels.length} 个）</option>
+                                {llmModels.map((model) => (
+                                  <option key={model} value={model}>{model}</option>
+                                ))}
+                              </select>
+                            </div>
+                          ) : null}
                         </div>
                       </div>
                       {llmNotice ? (
                         <div className="field field-full">
-                          <div className={llmNotice.kind === 'error' ? 'error-banner' : 'status-note'}>
-                            {llmNotice.message}
-                          </div>
+                          {llmNotice.kind === 'error' ? (
+                            <div className="error-banner" role="alert">
+                              <strong>{llmNotice.title ?? 'LLM 操作失败'}</strong>
+                              <div>{llmNotice.message}</div>
+                            </div>
+                          ) : (
+                            <div className="llm-info-card" role="status" aria-live="polite">
+                              <div className="llm-info-mark" aria-hidden="true">✓</div>
+                              <div className="llm-info-body">
+                                <div className="llm-info-title">{llmNotice.title ?? 'LLM 服务可用'}</div>
+                                <div className="llm-info-message">{llmNotice.message}</div>
+                                <div className="llm-info-meta">
+                                  <span>供应商：{llmNotice.provider || llmProvider}</span>
+                                  <span>接口：{llmNotice.baseUrl || llmBaseUrl || '供应商默认'}</span>
+                                  {llmNotice.model ? <span>模型：{llmNotice.model}</span> : null}
+                                  {typeof llmNotice.modelCount === 'number' ? (
+                                    <span>可选模型：{llmNotice.modelCount}</span>
+                                  ) : null}
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       ) : null}
                     </div>

@@ -733,6 +733,59 @@ button.active.filter { background: var(--fg); border-color: var(--fg); color: #f
   color: var(--muted);
   padding: 12px;
 }
+.llm-actions-row {
+  display: flex;
+  align-items: end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.llm-action-buttons { flex: 0 0 auto; }
+.llm-model-picker {
+  display: grid;
+  gap: 6px;
+  flex: 1 1 260px;
+  max-width: 420px;
+  min-width: min(260px, 100%);
+}
+.llm-info-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  align-items: start;
+  border: 1px solid #2da44e55;
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, #dafbe1 0%, #f6fff8 100%);
+  color: var(--fg);
+  padding: 12px;
+}
+.llm-info-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--green);
+  color: #fff;
+  font-weight: 800;
+  line-height: 1;
+}
+.llm-info-body { min-width: 0; display: grid; gap: 4px; }
+.llm-info-title { color: var(--green); font-weight: 800; }
+.llm-info-message { color: var(--fg); }
+.llm-info-meta {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 12px;
+}
+.llm-info-meta span {
+  border: 1px solid #2da44e33;
+  border-radius: 999px;
+  background: #fff;
+  padding: 2px 8px;
+  overflow-wrap: anywhere;
+}
 .config-toast {
   position: fixed;
   top: 112px;

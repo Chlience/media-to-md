@@ -146,8 +146,15 @@ describe('hash routing shell', () => {
       '请输入供应商 API Key',
     );
     expect(within(configBox as HTMLElement).getByLabelText('模型')).toHaveValue('');
-    expect(within(configBox as HTMLElement).getByRole('button', { name: '拉取模型' })).toBeInTheDocument();
-    expect(within(configBox as HTMLElement).getByRole('button', { name: '连接检查' })).toBeInTheDocument();
+    const fetchModelsButton = within(configBox as HTMLElement).getByRole('button', { name: '拉取模型' });
+    const checkConnectionButton = within(configBox as HTMLElement).getByRole('button', { name: '连接检查' });
+    expect(fetchModelsButton).toBeInTheDocument();
+    expect(checkConnectionButton).toBeInTheDocument();
+    expect(
+      checkConnectionButton.compareDocumentPosition(fetchModelsButton) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(within(configBox as HTMLElement).queryByLabelText('选择已拉取模型')).not.toBeInTheDocument();
     fireEvent.change(within(configBox as HTMLElement).getByLabelText('供应商'), {
       target: { value: 'deepseek' },
     });
@@ -202,6 +209,107 @@ describe('hash routing shell', () => {
     expect(screen.getByRole('columnheader', { name: '清洗力度' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '上一页' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '下一页' })).toBeInTheDocument();
+  });
+
+  it('shows fetched LLM models on the right and updates the model field from selection', async () => {
+    window.localStorage.setItem('whisperx_admin_token', 'token');
+    window.localStorage.setItem('whisperx_admin_username', 'admin');
+    const configResponse = {
+      whisperx_model: 'small',
+      whisperx_cli_model: 'small',
+      whisperx_openai_model: 'large-v2',
+      whisperx_model_dir: null,
+      whisperx_backend: 'cli',
+      whisperx_openai_base_url: null,
+      whisperx_openai_api_key_configured: false,
+      whisperx_openai_timeout_seconds: 3600,
+      model_cache_only: false,
+      nltk_data_dir: null,
+      whisperx_args: [],
+      whisperx_args_config: {},
+      whisperx_cli_args: [],
+      whisperx_cli_args_config: {},
+      whisperx_openai_args_config: {},
+      opendataloader_pdf_args: [],
+      opendataloader_pdf_args_config: {},
+      llm_polish_enabled: true,
+      llm_polish_provider: 'deepseek',
+      llm_polish_base_url: null,
+      llm_polish_api_key_configured: false,
+      llm_polish_model: null,
+      llm_polish_timeout_seconds: 60,
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith('/jobs')) {
+          return new Response(JSON.stringify({ jobs: [] }), {
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (url.endsWith('/admin/config')) {
+          return new Response(JSON.stringify(configResponse), {
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (url.endsWith('/admin/llm/models')) {
+          expect(init?.method).toBe('POST');
+          return new Response(
+            JSON.stringify({
+              provider: 'deepseek',
+              base_url: 'https://api.deepseek.com/v1',
+              models: ['deepseek-chat', 'deepseek-reasoner'],
+              message: '已拉取 2 个模型。',
+            }),
+            { headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        if (url.endsWith('/admin/llm/check')) {
+          expect(JSON.parse(String(init?.body))).toMatchObject({
+            provider: 'deepseek',
+            model: 'deepseek-reasoner',
+          });
+          return new Response(
+            JSON.stringify({
+              ok: true,
+              provider: 'deepseek',
+              base_url: 'https://api.deepseek.com/v1',
+              model: 'deepseek-reasoner',
+              message: '连接成功。',
+              models: ['deepseek-chat'],
+            }),
+            { headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        return new Response('{}', { headers: { 'Content-Type': 'application/json' } });
+      }),
+    );
+
+    window.location.hash = '#/admin';
+    render(<App />);
+
+    const configBox = screen.getByRole('heading', { name: '后端运行配置' }).closest('section');
+    const llmModelInput = await within(configBox as HTMLElement).findByLabelText('模型');
+    const checkButton = within(configBox as HTMLElement).getByRole('button', { name: '连接检查' });
+    const fetchButton = within(configBox as HTMLElement).getByRole('button', { name: '拉取模型' });
+
+    fireEvent.click(fetchButton);
+
+    const fetchedModelSelect = await within(configBox as HTMLElement).findByLabelText('选择已拉取模型');
+    expect(llmModelInput).toHaveValue('deepseek-chat');
+    fireEvent.change(fetchedModelSelect, { target: { value: 'deepseek-reasoner' } });
+    expect(llmModelInput).toHaveValue('deepseek-reasoner');
+
+    fireEvent.click(checkButton);
+
+    const llmInfo = await within(configBox as HTMLElement).findByRole('status');
+    expect(llmInfo).toHaveTextContent('连接检查通过');
+    expect(llmInfo).toHaveTextContent('连接成功');
+    expect(llmInfo).toHaveTextContent('供应商：deepseek');
+    expect(llmInfo).toHaveTextContent('接口：https://api.deepseek.com/v1');
+    expect(llmInfo).toHaveTextContent('模型：deepseek-reasoner');
+    expect(llmInfo).toHaveTextContent('可选模型：1');
   });
 
   it('shows a right-side notice after saving backend config', async () => {
