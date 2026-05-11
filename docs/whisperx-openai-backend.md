@@ -61,6 +61,27 @@ export WHISPERX_OPENAI_ARGS_JSON='{"batch_size":8}'
 
 Media-to-MD 最终会调用 `/v1/audio/transcriptions`。
 
+## 运行时进度
+
+OpenAI 音频转写接口是同步阻塞接口，标准协议没有任务进度字段。为了兼容其他 OpenAI-compatible 服务，Media-to-MD 不会向 multipart 表单添加任何非标准进度字段。
+
+当远端是 `whisperx-openai-server` 且 `/health` 返回：
+
+```json
+{
+  "runtime_progress": true,
+  "runtime_progress_header": "X-Request-ID"
+}
+```
+
+Media-to-MD 会自动启用该服务的非 OpenAI sidecar 进度能力：
+
+1. 对 `/v1/audio/transcriptions` 请求附加 `X-Request-ID: <job_id>`。
+2. 并行轮询 `/runtime/progress/<job_id>`。
+3. 把阶段和百分比写入任务 Log。
+
+如果远端没有这个能力，或者 `/health` 不存在，任务仍按普通 OpenAI 兼容模式执行，只显示提交、等待和完成/失败日志。
+
 ## 请求参数映射
 
 Media-to-MD 会向 OpenAI 兼容接口发送 multipart 表单：

@@ -4,6 +4,7 @@ import asyncio
 import io
 import json
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -16,6 +17,9 @@ from app.whisperx_openai_runner import (
     OpenAIWhisperXRunner,
     OpenAIWhisperXRunnerConfig,
     build_openai_form_fields,
+    build_openai_health_url,
+    build_openai_runtime_progress_url,
+    build_openai_runtime_progress_url_from_template,
     build_openai_transcriptions_url,
 )
 from app.whisperx_runner import WhisperXOptions
@@ -36,6 +40,34 @@ class OpenAIWhisperXRunnerTests(unittest.TestCase):
                 "http://localhost:9000/v1/audio/transcriptions"
             ),
             "http://localhost:9000/v1/audio/transcriptions",
+        )
+
+    def test_builds_runtime_sidecar_urls_from_base_url_variants(self):
+        self.assertEqual(
+            build_openai_health_url("http://localhost:9000"),
+            "http://localhost:9000/health",
+        )
+        self.assertEqual(
+            build_openai_health_url("http://localhost:9000/v1"),
+            "http://localhost:9000/health",
+        )
+        self.assertEqual(
+            build_openai_health_url(
+                "http://localhost:9000/v1/audio/transcriptions"
+            ),
+            "http://localhost:9000/health",
+        )
+        self.assertEqual(
+            build_openai_runtime_progress_url("http://localhost:9000/v1", "job 1"),
+            "http://localhost:9000/runtime/progress/job%201",
+        )
+        self.assertEqual(
+            build_openai_runtime_progress_url_from_template(
+                "http://localhost:9000/v1",
+                "/runtime/progress/{request_id}",
+                "job 1",
+            ),
+            "http://localhost:9000/runtime/progress/job%201",
         )
 
     def test_builds_openai_fields_from_job_options_and_config(self):
@@ -162,6 +194,109 @@ class OpenAIWhisperXRunnerTests(unittest.TestCase):
                         (request.output_dir / "result.json").read_text(encoding="utf-8")
                     ),
                     response_payload,
+                )
+
+        asyncio.run(exercise())
+
+    def test_runner_polls_runtime_progress_when_sidecar_is_available(self):
+        async def exercise():
+            with tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                input_path = root / "audio.wav"
+                input_path.write_bytes(b"fake audio")
+                request = OpenAIWhisperXRunRequest(
+                    input_path=input_path,
+                    output_dir=root / "output",
+                    log_path=root / "logs" / "job.log",
+                    options=WhisperXOptions(model="small"),
+                    request_id="job-123",
+                )
+                response_payload = {"text": "ok", "segments": []}
+                progress_payloads = [
+                    {
+                        "request_id": "job-123",
+                        "stage": "transcribe",
+                        "percent": 35.0,
+                        "message": "Transcribing audio 40.0%.",
+                        "done": False,
+                    },
+                    {
+                        "request_id": "job-123",
+                        "stage": "complete",
+                        "percent": 100.0,
+                        "message": "Request complete.",
+                        "done": True,
+                    },
+                ]
+                captured = {"progress_urls": []}
+                log_lines = []
+
+                class FakeResponse:
+                    status = 200
+
+                    def __init__(self, payload):
+                        self.payload = payload
+
+                    def __enter__(self):
+                        return self
+
+                    def __exit__(self, *args):
+                        return None
+
+                    def read(self):
+                        return json.dumps(self.payload).encode("utf-8")
+
+                def fake_urlopen(http_request, timeout):
+                    if http_request.get_method() == "GET":
+                        if http_request.full_url.endswith("/health"):
+                            return FakeResponse(
+                                {
+                                    "ok": True,
+                                    "runtime_progress": True,
+                                    "runtime_progress_header": "X-Request-ID",
+                                    "runtime_progress_endpoint": "/runtime/progress/{request_id}",
+                                }
+                            )
+                        captured["progress_urls"].append(http_request.full_url)
+                        payload = progress_payloads.pop(0) if progress_payloads else {
+                            "stage": "complete",
+                            "percent": 100.0,
+                            "done": True,
+                        }
+                        return FakeResponse(payload)
+
+                    captured["post_headers"] = dict(http_request.header_items())
+                    captured["post_body"] = http_request.data
+                    time.sleep(0.05)
+                    return FakeResponse(response_payload)
+
+                with mock.patch(
+                    "app.whisperx_openai_runner.urllib.request.urlopen",
+                    side_effect=fake_urlopen,
+                ):
+                    await OpenAIWhisperXRunner(
+                        OpenAIWhisperXRunnerConfig(
+                            base_url="http://localhost:9000/v1",
+                            api_key="secret",
+                            progress_poll_interval_seconds=0.01,
+                        )
+                    ).run(request, on_log=lambda line: log_lines.append(line))
+
+                headers = {key.lower(): value for key, value in captured["post_headers"].items()}
+                self.assertEqual(headers.get("x-request-id"), "job-123")
+                self.assertEqual(headers.get("authorization"), "Bearer secret")
+                self.assertTrue(
+                    captured["progress_urls"][0].startswith(
+                        "http://localhost:9000/runtime/progress/job-123"
+                    )
+                )
+                body = captured["post_body"].decode("utf-8", errors="replace")
+                self.assertNotIn('name="progress_id"', body)
+                self.assertTrue(
+                    any("WhisperX runtime progress enabled." == line for line in log_lines)
+                )
+                self.assertTrue(
+                    any("WhisperX 进度: 35.0% · transcribe" in line for line in log_lines)
                 )
 
         asyncio.run(exercise())

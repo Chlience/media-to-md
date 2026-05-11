@@ -11,6 +11,7 @@ import asyncio
 import json
 import mimetypes
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from dataclasses import dataclass, field
@@ -50,6 +51,7 @@ class OpenAIWhisperXRunnerConfig:
     api_key: str | None = None
     default_model: str = "small"
     timeout_seconds: float = 3600.0
+    progress_poll_interval_seconds: float = 2.0
     config_fields: Mapping[str, Any] = field(default_factory=dict)
 
 
@@ -59,6 +61,7 @@ class OpenAIWhisperXRunRequest:
     output_dir: Path
     log_path: Path
     options: WhisperXOptions
+    request_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -90,6 +93,36 @@ def build_openai_transcriptions_url(base_url: str) -> str:
     if normalized.endswith("/v1"):
         return f"{normalized}/audio/transcriptions"
     return f"{normalized}/v1/audio/transcriptions"
+
+
+def build_openai_service_root_url(base_url: str) -> str:
+    """Build the service root URL from supported OpenAI-compatible URL forms."""
+
+    endpoint = build_openai_transcriptions_url(base_url)
+    marker = "/v1/audio/transcriptions"
+    if endpoint.endswith(marker):
+        return endpoint[: -len(marker)]
+    return endpoint.rsplit("/audio/transcriptions", 1)[0]
+
+
+def build_openai_health_url(base_url: str) -> str:
+    return f"{build_openai_service_root_url(base_url)}/health"
+
+
+def build_openai_runtime_progress_url(base_url: str, request_id: str) -> str:
+    encoded = urllib.parse.quote(request_id, safe="")
+    return f"{build_openai_service_root_url(base_url)}/runtime/progress/{encoded}"
+
+
+def build_openai_runtime_progress_url_from_template(
+    base_url: str, template: str, request_id: str
+) -> str:
+    encoded = urllib.parse.quote(request_id, safe="")
+    rendered = template.replace("{request_id}", encoded)
+    if rendered.startswith(("http://", "https://")):
+        return rendered
+    root = build_openai_service_root_url(base_url)
+    return f"{root}/{rendered.lstrip('/')}"
 
 
 def _stringify_form_value(value: Any) -> str | None:
@@ -156,6 +189,13 @@ def _dedupe_form_fields(fields: Sequence[tuple[str, str]]) -> list[tuple[str, st
         else:
             result[previous] = (name, value)
     return result
+
+
+def _runtime_request_id(value: str | None) -> str:
+    source = value.strip() if value else uuid.uuid4().hex
+    sanitized = "".join(ch if ch.isalnum() or ch in "._:-" else "-" for ch in source)
+    sanitized = sanitized.strip(".:-_")
+    return (sanitized or uuid.uuid4().hex)[:128]
 
 
 def _escape_header_value(value: str) -> str:
@@ -338,9 +378,46 @@ class OpenAIWhisperXRunner:
         await self._log(
             request, on_log, f"OpenAI-compatible fields: {_safe_field_summary(fields)}"
         )
-        payload = await asyncio.to_thread(
-            self._post_transcription, endpoint, fields, request.input_path
+        request_id = _runtime_request_id(request.request_id)
+        progress = (
+            await asyncio.to_thread(
+                self._detect_runtime_progress, self.config.base_url, request_id
+            )
+            if on_log is not None
+            else None
         )
+        extra_headers: dict[str, str] = {}
+        if progress is not None:
+            header_name = progress.get("header") or "X-Request-ID"
+            extra_headers[header_name] = request_id
+            await self._log(request, on_log, "WhisperX runtime progress enabled.")
+
+        post_task = asyncio.create_task(
+            asyncio.to_thread(
+                self._post_transcription,
+                endpoint,
+                fields,
+                request.input_path,
+                extra_headers,
+            )
+        )
+        progress_task = (
+            asyncio.create_task(
+                self._poll_runtime_progress_until_done(
+                    request,
+                    on_log,
+                    progress["url"],
+                    post_task,
+                )
+            )
+            if progress is not None
+            else None
+        )
+        try:
+            payload = await post_task
+        finally:
+            if progress_task is not None:
+                await progress_task
         write_openai_response_artifacts(payload, request.output_dir)
         await self._log(
             request,
@@ -367,8 +444,97 @@ class OpenAIWhisperXRunner:
         if on_log is not None:
             await _maybe_await(on_log(line))
 
+    def _detect_runtime_progress(
+        self, base_url: str, request_id: str
+    ) -> dict[str, str] | None:
+        """Detect whisperx-openai-server's non-OpenAI runtime progress sidecar."""
+
+        health_url = build_openai_health_url(base_url)
+        headers = {"Accept": "application/json"}
+        if self.config.api_key:
+            headers["Authorization"] = f"Bearer {self.config.api_key}"
+        http_request = urllib.request.Request(health_url, headers=headers, method="GET")
+        try:
+            with urllib.request.urlopen(  # noqa: S310 - configured local/internal endpoint.
+                http_request, timeout=min(max(float(self.config.timeout_seconds), 1.0), 2.0)
+            ) as response:
+                status = _response_status(response)
+                if status < 200 or status >= 300:
+                    return None
+                body = response.read()
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError):
+            return None
+        try:
+            payload = json.loads(body.decode("utf-8"))
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(payload, Mapping) or payload.get("runtime_progress") is not True:
+            return None
+        header = payload.get("runtime_progress_header")
+        if not isinstance(header, str) or not header.strip():
+            header = "X-Request-ID"
+        endpoint_template = payload.get("runtime_progress_endpoint")
+        if isinstance(endpoint_template, str) and "{request_id}" in endpoint_template:
+            progress_url = build_openai_runtime_progress_url_from_template(
+                base_url, endpoint_template, request_id
+            )
+        else:
+            progress_url = build_openai_runtime_progress_url(base_url, request_id)
+        return {
+            "header": header.strip(),
+            "url": progress_url,
+        }
+
+    async def _poll_runtime_progress_until_done(
+        self,
+        request: OpenAIWhisperXRunRequest,
+        on_log: LogCallback | None,
+        progress_url: str,
+        post_task: asyncio.Task[dict[str, Any]],
+    ) -> None:
+        last_logged: Mapping[str, Any] | None = None
+        while True:
+            progress = await asyncio.to_thread(self._get_runtime_progress, progress_url)
+            if progress is not None and _should_log_runtime_progress(progress, last_logged):
+                await self._log(request, on_log, _format_runtime_progress_line(progress))
+                last_logged = progress
+            if post_task.done() or (progress is not None and bool(progress.get("done"))):
+                return
+            await asyncio.wait(
+                {post_task},
+                timeout=max(float(self.config.progress_poll_interval_seconds), 0.1),
+            )
+
+    def _get_runtime_progress(self, progress_url: str) -> Mapping[str, Any] | None:
+        headers = {"Accept": "application/json"}
+        if self.config.api_key:
+            headers["Authorization"] = f"Bearer {self.config.api_key}"
+        http_request = urllib.request.Request(progress_url, headers=headers, method="GET")
+        try:
+            with urllib.request.urlopen(  # noqa: S310 - configured local/internal endpoint.
+                http_request, timeout=min(max(float(self.config.timeout_seconds), 1.0), 10.0)
+            ) as response:
+                status = _response_status(response)
+                body = response.read()
+        except urllib.error.HTTPError as exc:
+            exc.read()
+            return None
+        except (urllib.error.URLError, TimeoutError):
+            return None
+        if status < 200 or status >= 300:
+            return None
+        try:
+            payload = json.loads(body.decode("utf-8"))
+        except json.JSONDecodeError:
+            return None
+        return payload if isinstance(payload, Mapping) else None
+
     def _post_transcription(
-        self, endpoint: str, fields: Sequence[tuple[str, str]], input_path: Path
+        self,
+        endpoint: str,
+        fields: Sequence[tuple[str, str]],
+        input_path: Path,
+        extra_headers: Mapping[str, str] | None = None,
     ) -> dict[str, Any]:
         content = input_path.read_bytes()
         content_type = (
@@ -381,6 +547,8 @@ class OpenAIWhisperXRunner:
             "Accept": "application/json",
             "Content-Type": multipart_content_type,
         }
+        if extra_headers:
+            headers.update(extra_headers)
         if self.config.api_key:
             headers["Authorization"] = f"Bearer {self.config.api_key}"
         http_request = urllib.request.Request(
@@ -479,6 +647,7 @@ class JobStorageOpenAIWhisperXRunner(OpenAIWhisperXRunner):
             output_dir=self.storage.job_dir(job_id) / "output",
             log_path=self.storage.resolve_job_relative(job_id, manifest.log_path),
             options=options_from_job_options(manifest.options),
+            request_id=job_id,
         )
 
         async def record_log_event(line: str) -> None:
@@ -531,3 +700,37 @@ def _safe_field_summary(fields: Sequence[tuple[str, str]]) -> str:
     return json.dumps(
         {name: value for name, value in fields}, ensure_ascii=False, sort_keys=True
     )
+
+
+def _runtime_progress_percent(progress: Mapping[str, Any]) -> float | None:
+    try:
+        return float(progress.get("percent"))
+    except (TypeError, ValueError):
+        return None
+
+
+def _format_runtime_progress_line(progress: Mapping[str, Any]) -> str:
+    stage = str(progress.get("stage") or "processing")
+    message = str(progress.get("message") or "").strip()
+    percent = _runtime_progress_percent(progress)
+    if percent is None:
+        prefix = f"WhisperX 进度: {stage}"
+    else:
+        prefix = f"WhisperX 进度: {percent:.1f}% · {stage}"
+    return f"{prefix} · {message}" if message else prefix
+
+
+def _should_log_runtime_progress(
+    progress: Mapping[str, Any], last_logged: Mapping[str, Any] | None
+) -> bool:
+    if last_logged is None:
+        return True
+    if progress.get("done") or progress.get("error"):
+        return True
+    if progress.get("stage") != last_logged.get("stage"):
+        return True
+    current_percent = _runtime_progress_percent(progress)
+    previous_percent = _runtime_progress_percent(last_logged)
+    if current_percent is None or previous_percent is None:
+        return False
+    return current_percent - previous_percent >= 5.0
