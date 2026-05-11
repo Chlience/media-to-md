@@ -62,7 +62,6 @@ const defaultWhisperxArgDisplay = {
   computeType: '',
   batchSize: '',
   chunkSize: '',
-  alignModel: '',
   diarizeModel: '',
   minSpeakers: '',
   maxSpeakers: '',
@@ -867,7 +866,6 @@ export function AdminPage() {
                           <div className="field"><label className="label" htmlFor="cfg-batch-size">Batch size</label><input id="cfg-batch-size" className="input mono" value={whisperxArgValue('batch_size', defaultWhisperxArgDisplay.batchSize)} placeholder="远端默认" onChange={(event) => setWhisperxArg('batch_size', event.target.value)} /></div>
                           <div className="field"><label className="label" htmlFor="cfg-chunk-size">Chunk size</label><input id="cfg-chunk-size" className="input mono" value={whisperxArgValue('chunk_size', defaultWhisperxArgDisplay.chunkSize)} placeholder="远端默认" onChange={(event) => setWhisperxArg('chunk_size', event.target.value)} /></div>
                           <div className="field"><label className="label" htmlFor="cfg-no-align">No align</label><select id="cfg-no-align" className="select" value={String(whisperxArgBooleanValue('no_align'))} onChange={(event) => setWhisperxBooleanArg('no_align', event.target.value)}><option value="">远端默认</option><option value="true">true</option><option value="false">false</option></select></div>
-                          <div className="field"><label className="label" htmlFor="cfg-align-model">Align model</label><input id="cfg-align-model" className="input" value={whisperxArgValue('align_model', defaultWhisperxArgDisplay.alignModel)} placeholder="远端默认" onChange={(event) => setWhisperxArg('align_model', event.target.value)} /></div>
                         </>
                       ) : (
                         <>
@@ -878,7 +876,6 @@ export function AdminPage() {
                           <div className="field"><label className="label" htmlFor="cfg-batch-size">Batch size</label><input id="cfg-batch-size" className="input mono" value={whisperxArgValue('batch_size', defaultWhisperxArgDisplay.batchSize)} placeholder="后端默认" onChange={(event) => setWhisperxArg('batch_size', event.target.value)} /></div>
                           <div className="field"><label className="label" htmlFor="cfg-chunk-size">Chunk size</label><input id="cfg-chunk-size" className="input mono" value={whisperxArgValue('chunk_size', defaultWhisperxArgDisplay.chunkSize)} placeholder="后端默认" onChange={(event) => setWhisperxArg('chunk_size', event.target.value)} /></div>
                           <div className="field"><label className="label" htmlFor="cfg-no-align">No align</label><select id="cfg-no-align" className="select" value={String(whisperxArgBooleanValue('no_align'))} onChange={(event) => setWhisperxBooleanArg('no_align', event.target.value)}><option value="">后端默认</option><option value="true">true</option><option value="false">false</option></select></div>
-                          <div className="field"><label className="label" htmlFor="cfg-align-model">Align model</label><input id="cfg-align-model" className="input" value={whisperxArgValue('align_model', defaultWhisperxArgDisplay.alignModel)} placeholder="后端默认" onChange={(event) => setWhisperxArg('align_model', event.target.value)} /></div>
                           <div className="field"><label className="label" htmlFor="cfg-cache-only">仅使用本地缓存</label><select id="cfg-cache-only" className="select" value={String(modelCacheOnly)} onChange={(event) => setModelCacheOnly(event.target.value === 'true')}><option value="true">true</option><option value="false">false</option></select></div>
                           <div className="field field-full"><label className="label" htmlFor="cfg-diarize-model">Diarize model</label><input id="cfg-diarize-model" className="input mono" value={whisperxArgValue('diarize_model', defaultWhisperxArgDisplay.diarizeModel)} placeholder="后端默认；例如 /models/whisperx-cache/pyannote-speaker-diarization-community-1" onChange={(event) => setWhisperxArg('diarize_model', event.target.value)} /></div>
                           <div className="field"><label className="label" htmlFor="cfg-min-speakers">Min speakers</label><input id="cfg-min-speakers" className="input mono" type="number" min="1" value={whisperxArgValue('min_speakers', defaultWhisperxArgDisplay.minSpeakers)} placeholder="后端默认" onChange={(event) => setWhisperxArg('min_speakers', event.target.value)} /></div>

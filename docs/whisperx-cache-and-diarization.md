@@ -20,7 +20,7 @@
 `model_cache_only=true` 会要求运行时只使用本地已有缓存。适合离线机器，但前提是：
 
 - Whisper/Faster-Whisper 模型已在本地。
-- 对齐模型已在本地缓存或通过 `align_model` 指定。
+- 对齐模型已在本地缓存；具体模型由 WhisperX 按语言自动选择。
 - 说话人分离所需模型已在本地，且相关权限/令牌已处理。
 - NLTK 数据目录可用。
 
@@ -28,7 +28,7 @@
 
 ## 对齐模型
 
-可通过 `whisperx_cli_args.align_model` 指定本机 CLI 模式的对齐模型名或本地路径；OpenAI 兼容接口模式使用 `whisperx_openai_args.align_model`，由远端服务解释。不同语言需要匹配的 wav2vec2/对齐模型。若中文或其他语言对齐失败，建议先用命令行直接运行 `whisperx` 验证上游模型加载，再把稳定参数写入后端配置。
+Media-to-MD 不再向 CLI 或 OpenAI 兼容接口传入 `align_model`，只保留 `no_align` 开关；对齐模型由 WhisperX 按检测语言自动选择。如需覆盖，请在直接运行 WhisperX 或远端 WhisperX 服务自身配置。不同语言需要匹配的 wav2vec2/对齐模型。若中文或其他语言对齐失败，建议先用命令行直接运行 `whisperx` 验证上游模型加载。
 
 ## 说话人分离
 

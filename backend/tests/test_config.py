@@ -238,7 +238,7 @@ def test_backend_config_json_is_loaded_and_env_can_override(monkeypatch, tmp_pat
     )
     monkeypatch.setenv(
         "WHISPERX_OPENAI_ARGS_JSON",
-        '{"batch_size": 20, "align_model": "remote-align"}',
+        '{"batch_size": 20, "no_align": true}',
     )
     monkeypatch.setenv(
         "OPENDATALOADER_PDF_ARGS_JSON",
@@ -267,12 +267,11 @@ def test_backend_config_json_is_loaded_and_env_can_override(monkeypatch, tmp_pat
     assert overridden.whisperx_args == (
         "--batch_size",
         "20",
-        "--align_model",
-        "remote-align",
+        "--no_align",
     )
     assert overridden.whisperx_args_config == {
         "batch_size": 20,
-        "align_model": "remote-align",
+        "no_align": True,
     }
     assert overridden.whisperx_cli_args == (
         "--batch_size",
@@ -286,7 +285,7 @@ def test_backend_config_json_is_loaded_and_env_can_override(monkeypatch, tmp_pat
     }
     assert overridden.whisperx_openai_args_config == {
         "batch_size": 20,
-        "align_model": "remote-align",
+        "no_align": True,
     }
     assert overridden.opendataloader_pdf_args == (
         "--format",
@@ -345,6 +344,8 @@ def test_whisperx_args_are_allowlisted_and_normalized():
 
     with pytest.raises(ValueError, match="Unsupported whisperx_args key"):
         normalize_whisperx_args({"output_dir": "/tmp/unsafe"})
+    with pytest.raises(ValueError, match="Unsupported whisperx_args key"):
+        normalize_whisperx_args({"align_model": "remote-align"})
     with pytest.raises(ValueError, match="batch_size"):
         normalize_whisperx_args({"batch_size": 0})
     with pytest.raises(ValueError, match="min_speakers"):
@@ -358,6 +359,8 @@ def test_whisperx_args_are_allowlisted_and_normalized():
         normalize_whisperx_openai_args_config({"compute_type": "float16"})
     with pytest.raises(ValueError, match="Unsupported whisperx_openai_args key"):
         normalize_whisperx_openai_args_config({"diarize_model": "pyannote/speaker-diarization-community-1"})
+    with pytest.raises(ValueError, match="Unsupported whisperx_openai_args key"):
+        normalize_whisperx_openai_args_config({"align_model": "remote-align"})
 
 
 def test_opendataloader_pdf_args_are_safe_allowlisted_and_normalized():

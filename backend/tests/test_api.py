@@ -607,6 +607,22 @@ def test_admin_config_update_rejects_openai_diarize_model(tmp_path):
     assert response.status_code == 400
     assert "Unsupported whisperx_openai_args key 'diarize_model'" in response.text
 
+    response = client.put(
+        "/api/admin/config",
+        headers=headers,
+        json={
+            "whisperx_cli_model": "small",
+            "whisperx_openai_model": "large-v2",
+            "whisperx_backend": "openai",
+            "whisperx_openai_args": {
+                "align_model": "remote-align",
+            },
+        },
+    )
+
+    assert response.status_code == 400
+    assert "Unsupported whisperx_openai_args key 'align_model'" in response.text
+
 
 def test_admin_can_fetch_llm_models_and_check_connection(monkeypatch, tmp_path):
     client, _, _ = make_client(tmp_path)
