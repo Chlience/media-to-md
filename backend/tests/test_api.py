@@ -45,6 +45,11 @@ DEFAULT_LLM_CONFIG_EXPECTED = {
     "llm_polish_providers": LLM_PROVIDER_EXPECTED,
 }
 
+DEFAULT_UPLOAD_CONFIG_EXPECTED = {
+    "max_whisperx_upload_mb": 512.0,
+    "max_pdf_upload_mb": 512.0,
+}
+
 
 class FakeRunner:
     def __init__(self, app_ref):
@@ -143,6 +148,7 @@ def test_upload_status_config_reconstruct_from_filesystem(tmp_path):
         "opendataloader_pdf_args": [],
         "opendataloader_pdf_args_config": {"format": "markdown,text", "image_output": "off"},
         **DEFAULT_LLM_CONFIG_EXPECTED,
+        **DEFAULT_UPLOAD_CONFIG_EXPECTED,
     }
     job_id = upload(client)
 
@@ -173,6 +179,31 @@ def test_upload_status_config_reconstruct_from_filesystem(tmp_path):
     # API reads disk state, not process-local runner memory.
     app.state.job_service.runner.started.clear()
     assert client.get(f"/api/jobs/{job_id}/results").json()["artifacts"] == []
+
+
+def test_health_exposes_task_specific_upload_limits(tmp_path):
+    client, _, _ = make_client(
+        tmp_path,
+        max_whisperx_upload_mb=256,
+        max_pdf_upload_mb=64,
+    )
+
+    response = client.get("/api/health")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "ok",
+        "upload_limits": {
+            "whisperx": {
+                "max_mb": 256.0,
+                "max_bytes": 256 * 1024 * 1024,
+            },
+            "pdf": {
+                "max_mb": 64.0,
+                "max_bytes": 64 * 1024 * 1024,
+            },
+        },
+    }
 
 
 def test_admin_lists_all_jobs_without_logs_by_default(tmp_path):
@@ -469,6 +500,8 @@ def test_admin_can_update_backend_config(monkeypatch, tmp_path):
             "llm_polish_api_key": "llm-key",
             "llm_polish_model": "deepseek-chat",
             "llm_polish_timeout_seconds": 45,
+            "max_whisperx_upload_mb": 256,
+            "max_pdf_upload_mb": 128,
         },
     )
 
@@ -536,6 +569,8 @@ def test_admin_can_update_backend_config(monkeypatch, tmp_path):
         "llm_polish_model": "deepseek-chat",
         "llm_polish_timeout_seconds": 45.0,
         "llm_polish_providers": LLM_PROVIDER_EXPECTED,
+        "max_whisperx_upload_mb": 256.0,
+        "max_pdf_upload_mb": 128.0,
     }
     saved = config_path.read_text(encoding="utf-8")
     assert '"data_root": "data"' in saved
@@ -556,6 +591,8 @@ def test_admin_can_update_backend_config(monkeypatch, tmp_path):
     assert '"llm_polish_provider": "deepseek"' in saved
     assert '"llm_polish_api_key": "llm-key"' in saved
     assert '"llm_polish_model": "deepseek-chat"' in saved
+    assert '"max_whisperx_upload_mb": 256' in saved
+    assert '"max_pdf_upload_mb": 128' in saved
     assert data_root.exists()
 
     upload_response = client.post(
@@ -943,6 +980,49 @@ def test_upload_accepts_task_type_pdf(tmp_path):
     assert status["input_filename"] == "paper.pdf"
     assert status["options"]["task_type"] == "pdf"
     assert "output_formats" not in status["options"]
+
+
+def test_upload_enforces_separate_task_type_limits(tmp_path):
+    client, _, _ = make_client(
+        tmp_path,
+        max_whisperx_upload_mb=0.000002,
+        max_pdf_upload_mb=0.00001,
+    )
+
+    whisperx_response = client.post(
+        "/api/jobs/upload",
+        files={"file": ("sample.wav", b"abc", "audio/wav")},
+        data={"task_type": "whisperx", "model": "small", "language": "auto"},
+    )
+    assert whisperx_response.status_code == 413
+
+    pdf_response = client.post(
+        "/api/jobs/upload",
+        files={"file": ("paper.pdf", b"%PDF", "application/pdf")},
+        data={"task_type": "pdf"},
+    )
+    assert pdf_response.status_code == 201, pdf_response.text
+
+
+def test_upload_can_reject_from_declared_file_size_header_before_storage(tmp_path):
+    client, _, _ = make_client(
+        tmp_path,
+        max_whisperx_upload_mb=512,
+        max_pdf_upload_mb=0.00001,
+    )
+
+    response = client.post(
+        "/api/jobs/upload",
+        headers={
+            "X-Media-To-MD-Task-Type": "pdf",
+            "X-Media-To-MD-File-Size": str(1024 * 1024),
+        },
+        files={"file": ("paper.pdf", b"%PDF", "application/pdf")},
+        data={"task_type": "pdf"},
+    )
+
+    assert response.status_code == 413
+    assert list((tmp_path / "jobs").glob("*")) == []
 
 
 def test_upload_ignores_removed_diarize_form_field(tmp_path):

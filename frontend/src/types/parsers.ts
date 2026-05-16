@@ -3,6 +3,7 @@ import {
   AdminSession,
   Artifact,
   BackendConfig,
+  HealthResponse,
   JobCreateResponse,
   JobEvent,
   JobStatus,
@@ -11,6 +12,8 @@ import {
   LlmModelsResponse,
   LlmProviderInfo,
   RuntimePhase,
+  UploadLimit,
+  UploadLimits,
 } from './api';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -32,6 +35,14 @@ function asNullableString(value: unknown): string | null {
 
 function asNumber(value: unknown): number | null {
   return typeof value === 'number' ? value : null;
+}
+
+function asPositiveNumber(value: unknown, context: string): number {
+  const number = asNumber(value);
+  if (number === null || number <= 0) {
+    throw new Error(`${context} must be a positive number`);
+  }
+  return number;
 }
 
 function asBoolean(value: unknown, defaultValue = false): boolean {
@@ -56,6 +67,35 @@ function parseLlmProviderInfo(json: unknown): LlmProviderInfo {
     id: asString(object.id),
     label: asString(object.label),
     baseUrl: asNullableString(object.base_url),
+  };
+}
+
+function parseUploadLimit(json: unknown): UploadLimit | null {
+  if (!isRecord(json)) return null;
+  const maxMb = asNumber(json.max_mb);
+  const maxBytes = asNumber(json.max_bytes);
+  if (maxMb === null || maxBytes === null || maxMb <= 0 || maxBytes <= 0) {
+    return null;
+  }
+  return {
+    maxMb,
+    maxBytes: Math.trunc(maxBytes),
+  };
+}
+
+function parseUploadLimits(json: unknown): UploadLimits | null {
+  if (!isRecord(json)) return null;
+  const whisperx = parseUploadLimit(json.whisperx);
+  const pdf = parseUploadLimit(json.pdf);
+  if (!whisperx || !pdf) return null;
+  return { whisperx, pdf };
+}
+
+export function parseHealthResponse(json: unknown): HealthResponse {
+  const object = asObject(json, 'HealthResponse');
+  return {
+    status: asString(object.status),
+    uploadLimits: parseUploadLimits(object.upload_limits),
   };
 }
 
@@ -105,6 +145,14 @@ export function parseBackendConfig(json: unknown): BackendConfig {
     llmPolishProviders: Array.isArray(object.llm_polish_providers)
       ? object.llm_polish_providers.map(parseLlmProviderInfo)
       : [],
+    maxWhisperxUploadMb: asPositiveNumber(
+      object.max_whisperx_upload_mb,
+      'BackendConfig.max_whisperx_upload_mb',
+    ),
+    maxPdfUploadMb: asPositiveNumber(
+      object.max_pdf_upload_mb,
+      'BackendConfig.max_pdf_upload_mb',
+    ),
   };
 }
 

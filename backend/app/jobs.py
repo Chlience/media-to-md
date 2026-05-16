@@ -35,9 +35,19 @@ class JobService:
         self.runner = runner or NoopRunner(storage)
 
     def create_job(
-        self, fileobj, filename: str, options: DiscriminatedJobOptions
+        self,
+        fileobj,
+        filename: str,
+        options: DiscriminatedJobOptions,
+        *,
+        max_input_size_bytes: int | None = None,
     ) -> JobManifest:
-        return self.storage.create_job(fileobj, filename, options)
+        return self.storage.create_job(
+            fileobj,
+            filename,
+            options,
+            max_input_size_bytes=max_input_size_bytes,
+        )
 
     async def start_job(self, job_id: str) -> None:
         self.storage.read_manifest(job_id)

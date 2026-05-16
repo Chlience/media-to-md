@@ -26,6 +26,7 @@ from ..config import (
     normalize_whisperx_args,
     normalize_whisperx_args_config,
     normalize_whisperx_openai_args_config,
+    upload_limit_bytes_for_task_type,
     write_backend_config_update,
 )
 from ..jobs import JobRunnerDispatcher, JobService, build_job_runner
@@ -61,7 +62,7 @@ from ..models import (
     JobStatusResponse,
 )
 from ..runtime_progress import whisperx_runtime_phase
-from ..storage import JobStorage, StorageError
+from ..storage import InputTooLargeError, JobStorage, StorageError
 from ..whisperx_openai_runner import (
     JobStorageOpenAIWhisperXRunner,
     fetch_openai_model_ids,
@@ -164,9 +165,22 @@ def _normalize_whisperx_output_formats(value: str | None) -> list[str]:
     return seen
 
 
+def _upload_limits_response(settings: Settings) -> dict[str, dict[str, float | int]]:
+    return {
+        "whisperx": {
+            "max_mb": settings.max_whisperx_upload_mb,
+            "max_bytes": settings.max_whisperx_upload_bytes,
+        },
+        "pdf": {
+            "max_mb": settings.max_pdf_upload_mb,
+            "max_bytes": settings.max_pdf_upload_bytes,
+        },
+    }
+
+
 @router.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+def health(settings: Annotated[Settings, Depends(get_settings_dep)]) -> dict[str, object]:
+    return {"status": "ok", "upload_limits": _upload_limits_response(settings)}
 
 
 @router.get("/config", response_model=ConfigResponse)
@@ -216,6 +230,8 @@ def _config_response(settings: Settings) -> ConfigResponse:
         llm_polish_model=settings.llm_polish_model,
         llm_polish_timeout_seconds=settings.llm_polish_timeout_seconds,
         llm_polish_providers=provider_infos(),
+        max_whisperx_upload_mb=settings.max_whisperx_upload_mb,
+        max_pdf_upload_mb=settings.max_pdf_upload_mb,
     )
 
 
@@ -317,6 +333,8 @@ def update_config(
             "llm_polish_base_url": llm_base_url,
             "llm_polish_model": llm_model,
             "llm_polish_timeout_seconds": llm_timeout_seconds,
+            "max_whisperx_upload_mb": update.max_whisperx_upload_mb,
+            "max_pdf_upload_mb": update.max_pdf_upload_mb,
         }
         if update.whisperx_openai_clear_api_key:
             config_updates["whisperx_openai_api_key"] = None
@@ -532,7 +550,16 @@ async def upload_job(
             markdown_cleanup_strength=cleanup_strength,
             llm_polish=settings.pdf_llm_polish_enabled,
         )
-        manifest = service.create_job(file.file, file.filename or "upload", options)
+        limit_bytes = upload_limit_bytes_for_task_type(settings, task_type)
+        try:
+            manifest = service.create_job(
+                file.file,
+                file.filename or "upload",
+                options,
+                max_input_size_bytes=limit_bytes,
+            )
+        except InputTooLargeError as exc:
+            raise HTTPException(status_code=413, detail=str(exc)) from exc
         return JobCreated(job_id=manifest.job_id, status=manifest.status)
 
     selected_model = (model or "").strip() or settings.whisperx_model
@@ -559,7 +586,16 @@ async def upload_job(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    manifest = service.create_job(file.file, file.filename or "upload", options)
+    limit_bytes = upload_limit_bytes_for_task_type(settings, task_type)
+    try:
+        manifest = service.create_job(
+            file.file,
+            file.filename or "upload",
+            options,
+            max_input_size_bytes=limit_bytes,
+        )
+    except InputTooLargeError as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
     return JobCreated(job_id=manifest.job_id, status=manifest.status)
 
 

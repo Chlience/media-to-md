@@ -93,9 +93,12 @@ ffmpeg -version
 | `WHISPERX_OPENAI_API_KEY` | 调用 OpenAI 兼容服务时发送的 Bearer Key。 |
 | `WHISPERX_OPENAI_TIMEOUT_SECONDS` | OpenAI 兼容服务请求超时时间。 |
 | `OPENDATALOADER_PDF_ARGS_JSON` | 覆盖 `opendataloader_pdf_args`。 |
+| `MEDIA_TO_MD_MAX_WHISPERX_UPLOAD_MB` / `MEDIA_TO_MD_MAX_PDF_UPLOAD_MB` | 分别覆盖音视频转写和 PDF 解析的最大上传 MB。 |
 | `WHISPERX_ADMIN_USERNAME` / `WHISPERX_ADMIN_PASSWORD` | 覆盖管理员账号。 |
 
 `MEDIA_TO_MD_API_BASE_URL` 是前端启动/构建时变量，不属于后端运行配置；修改后需要重启前端 dev server，生产包需要重新构建。管理页只读展示当前启动配置，不再写入浏览器本地覆盖。
+
+上传限制以后端为权威：`max_whisperx_upload_mb` 控制音视频转写，`max_pdf_upload_mb` 控制 PDF 解析。`GET /api/health` 会返回两类任务的 `upload_limits`，前端在选择/提交前按该值拦截，后端在创建任务时再次按任务类型校验。
 
 ### 允许的 WhisperX 参数
 
@@ -151,7 +154,7 @@ OpenAI 模式只转发 multipart 任务级参数：`batch_size`, `chunk_size`, `
 
 公开 API：
 
-- `GET /api/health`
+- `GET /api/health`：健康检查，并返回音视频/PDF 分开的上传大小限制。
 - `POST /api/jobs/upload`
 - `GET /api/jobs/{job_id}/status`
 - `GET /api/jobs/{job_id}/results`

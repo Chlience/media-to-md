@@ -21,6 +21,9 @@ WHISPERX_CLI_ARGS_ENV = "WHISPERX_CLI_ARGS_JSON"
 WHISPERX_OPENAI_ARGS_ENV = "WHISPERX_OPENAI_ARGS_JSON"
 OPENDATALOADER_PDF_ARGS_ENV = "OPENDATALOADER_PDF_ARGS_JSON"
 WHISPERX_BACKENDS = {"cli", "openai"}
+DEFAULT_MAX_UPLOAD_MB = 512.0
+MAX_WHISPERX_UPLOAD_MB_ENV = "MEDIA_TO_MD_MAX_WHISPERX_UPLOAD_MB"
+MAX_PDF_UPLOAD_MB_ENV = "MEDIA_TO_MD_MAX_PDF_UPLOAD_MB"
 
 _CONFIG_ARG_SPECS: dict[str, dict[str, Any]] = {
     "batch_size": {"flag": "--batch_size", "type": "int", "min": 1},
@@ -144,12 +147,34 @@ class Settings:
     llm_polish_api_key: str | None = None
     llm_polish_model: str | None = None
     llm_polish_timeout_seconds: float = DEFAULT_LLM_TIMEOUT_SECONDS
+    max_whisperx_upload_mb: float = DEFAULT_MAX_UPLOAD_MB
+    max_pdf_upload_mb: float = DEFAULT_MAX_UPLOAD_MB
     admin_username: str | None = None
     admin_password: str | None = None
 
     @property
     def jobs_root(self) -> Path:
         return self.data_root / "jobs"
+
+    @property
+    def max_whisperx_upload_bytes(self) -> int:
+        return _mb_to_bytes(self.max_whisperx_upload_mb)
+
+    @property
+    def max_pdf_upload_bytes(self) -> int:
+        return _mb_to_bytes(self.max_pdf_upload_mb)
+
+
+def _mb_to_bytes(value: float) -> int:
+    return int(float(value) * 1024 * 1024)
+
+
+def upload_limit_bytes_for_task_type(settings: Settings, task_type: str) -> int:
+    return (
+        settings.max_pdf_upload_bytes
+        if task_type == "pdf"
+        else settings.max_whisperx_upload_bytes
+    )
 
 
 def _bool_env(name: str, default: bool = False) -> bool:
@@ -743,6 +768,20 @@ def get_settings() -> Settings:
         "llm_polish_timeout_seconds",
         DEFAULT_LLM_TIMEOUT_SECONDS,
     )
+    max_whisperx_upload_mb = _positive_float(
+        os.getenv(MAX_WHISPERX_UPLOAD_MB_ENV)
+        if os.getenv(MAX_WHISPERX_UPLOAD_MB_ENV) is not None
+        else config.get("max_whisperx_upload_mb"),
+        "max_whisperx_upload_mb",
+        DEFAULT_MAX_UPLOAD_MB,
+    )
+    max_pdf_upload_mb = _positive_float(
+        os.getenv(MAX_PDF_UPLOAD_MB_ENV)
+        if os.getenv(MAX_PDF_UPLOAD_MB_ENV) is not None
+        else config.get("max_pdf_upload_mb"),
+        "max_pdf_upload_mb",
+        DEFAULT_MAX_UPLOAD_MB,
+    )
 
     env_nltk_data = os.getenv("WHISPERX_NLTK_DATA_DIR") or os.getenv("NLTK_DATA")
     config_nltk_data = _optional_str(config.get("nltk_data_dir"))
@@ -814,6 +853,8 @@ def get_settings() -> Settings:
         llm_polish_api_key=llm_polish_api_key,
         llm_polish_model=llm_polish_model,
         llm_polish_timeout_seconds=llm_polish_timeout_seconds,
+        max_whisperx_upload_mb=max_whisperx_upload_mb,
+        max_pdf_upload_mb=max_pdf_upload_mb,
         admin_username=admin_username,
         admin_password=admin_password,
     )

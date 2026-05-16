@@ -6,7 +6,7 @@ import pytest
 
 from app import storage as storage_module
 from app.models import Artifact, JobOptions, JobStatus
-from app.storage import JobStorage, StorageError
+from app.storage import InputTooLargeError, JobStorage, StorageError
 
 
 def test_create_job_writes_canonical_manifest(tmp_path, monkeypatch):
@@ -48,6 +48,20 @@ def test_create_job_keeps_upload_when_duration_probe_is_unavailable(
     event = storage.read_events(manifest.job_id)[0]
     assert event.data["input_size_bytes"] == 3
     assert event.data["input_duration_seconds"] is None
+
+
+def test_create_job_rejects_input_over_configured_limit_and_removes_partial_job(tmp_path):
+    storage = JobStorage(tmp_path)
+
+    with pytest.raises(InputTooLargeError, match="configured limit"):
+        storage.create_job(
+            BytesIO(b"abcdef"),
+            "too-large.wav",
+            JobOptions(),
+            max_input_size_bytes=3,
+        )
+
+    assert list((tmp_path / "jobs").iterdir()) == []
 
 
 def test_manifest_update_is_valid_json_and_changes_updated_at(tmp_path):

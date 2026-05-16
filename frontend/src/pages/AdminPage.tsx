@@ -45,6 +45,7 @@ const defaultWhisperxBackend: WhisperxBackend = 'cli';
 const defaultOpenaiTimeoutSeconds = '3600';
 const defaultLlmProvider = 'openai';
 const defaultLlmTimeoutSeconds = '60';
+const defaultMaxUploadMb = '512';
 const fallbackLlmProviders: LlmProviderInfo[] = [
   { id: 'openai', label: 'OpenAI', baseUrl: 'https://api.openai.com/v1' },
   { id: 'deepseek', label: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1' },
@@ -177,6 +178,8 @@ export function AdminPage() {
   const [openaiModelsBusy, setOpenaiModelsBusy] = useState(false);
   const [nltkDataDir, setNltkDataDir] = useState('');
   const [modelCacheOnly, setModelCacheOnly] = useState(defaultModelCacheOnly);
+  const [maxWhisperxUploadMb, setMaxWhisperxUploadMb] = useState(defaultMaxUploadMb);
+  const [maxPdfUploadMb, setMaxPdfUploadMb] = useState(defaultMaxUploadMb);
   const [cliWhisperxArgs, setCliWhisperxArgs] = useState('{}');
   const [openaiWhisperxArgs, setOpenaiWhisperxArgs] = useState('{}');
   const [pdfArgs, setPdfArgs] = useState('{}');
@@ -271,6 +274,8 @@ export function AdminPage() {
     setOpenaiModels([]);
     setNltkDataDir(nextConfig.nltkDataDir ?? '');
     setModelCacheOnly(nextConfig.modelCacheOnly);
+    setMaxWhisperxUploadMb(String(nextConfig.maxWhisperxUploadMb));
+    setMaxPdfUploadMb(String(nextConfig.maxPdfUploadMb));
     setCliWhisperxArgs(jsonPreview(nextConfig.whisperxCliArgsConfig));
     setOpenaiWhisperxArgs(jsonPreview(nextConfig.whisperxOpenaiArgsConfig));
     setPdfArgs(jsonPreview(nextConfig.pdfArgsConfig));
@@ -451,6 +456,14 @@ export function AdminPage() {
       if (!Number.isFinite(parsedLlmTimeoutSeconds) || parsedLlmTimeoutSeconds <= 0) {
         throw new Error('LLM timeout seconds 必须是大于 0 的数字。');
       }
+      const parsedMaxWhisperxUploadMb = Number(maxWhisperxUploadMb || defaultMaxUploadMb);
+      if (!Number.isFinite(parsedMaxWhisperxUploadMb) || parsedMaxWhisperxUploadMb <= 0) {
+        throw new Error('音视频最大上传 MB 必须是大于 0 的数字。');
+      }
+      const parsedMaxPdfUploadMb = Number(maxPdfUploadMb || defaultMaxUploadMb);
+      if (!Number.isFinite(parsedMaxPdfUploadMb) || parsedMaxPdfUploadMb <= 0) {
+        throw new Error('PDF 最大上传 MB 必须是大于 0 的数字。');
+      }
       const nextConfig = await api.updateConfig({
         adminToken: token,
         cliModel,
@@ -463,6 +476,8 @@ export function AdminPage() {
         whisperxOpenaiTimeoutSeconds: parsedOpenaiTimeoutSeconds,
         modelCacheOnly,
         nltkDataDir,
+        maxWhisperxUploadMb: parsedMaxWhisperxUploadMb,
+        maxPdfUploadMb: parsedMaxPdfUploadMb,
         whisperxCliArgs: parseJsonObject(cliWhisperxArgs),
         whisperxOpenaiArgs: parseJsonObject(openaiWhisperxArgs),
         pdfArgs: parseJsonObject(pdfArgs),
@@ -485,6 +500,8 @@ export function AdminPage() {
       setOpenaiClearApiKey(false);
       setOpenaiTimeoutSeconds(String(nextConfig.whisperxOpenaiTimeoutSeconds || 3600));
       setOpenaiModels([]);
+      setMaxWhisperxUploadMb(String(nextConfig.maxWhisperxUploadMb));
+      setMaxPdfUploadMb(String(nextConfig.maxPdfUploadMb));
       setCliWhisperxArgs(jsonPreview(nextConfig.whisperxCliArgsConfig));
       setOpenaiWhisperxArgs(jsonPreview(nextConfig.whisperxOpenaiArgsConfig));
       setPdfArgs(jsonPreview(nextConfig.pdfArgsConfig));
@@ -831,6 +848,7 @@ export function AdminPage() {
                         <input id="cfg-model" className="input" value={visibleModel} list={whisperxBackend === 'openai' ? 'cfg-openai-model-list' : undefined} placeholder={visibleModelPlaceholder} onChange={(event) => setVisibleModel(event.target.value)} />
                         {whisperxBackend === 'openai' ? <datalist id="cfg-openai-model-list">{openaiModels.map((model) => <option key={model} value={model} />)}</datalist> : null}
                       </div>
+                      <div className="field"><label className="label" htmlFor="cfg-whisperx-upload-limit">音视频最大上传 MB</label><input id="cfg-whisperx-upload-limit" className="input mono" type="number" min="0.001" step="0.1" value={maxWhisperxUploadMb} onChange={(event) => setMaxWhisperxUploadMb(event.target.value)} /></div>
                       {whisperxBackend === 'openai' ? (
                         <>
                           <div className="field"><label className="label" htmlFor="cfg-openai-base-url">OpenAI Base URL</label><input id="cfg-openai-base-url" className="input mono" value={openaiBaseUrl} placeholder="http://localhost:9000/v1" onChange={(event) => { setOpenaiBaseUrl(event.target.value); setOpenaiModels([]); }} /></div>
@@ -901,6 +919,7 @@ export function AdminPage() {
                       <div className="field"><label className="label" htmlFor="cfg-pdf-hybrid">Hybrid backend</label><select id="cfg-pdf-hybrid" className="select" value={pdfArgValue('hybrid', 'off')} onChange={(event) => setPdfArg('hybrid', event.target.value)}><option value="off">off</option><option value="docling-fast">docling-fast</option><option value="hancom-ai">hancom-ai</option></select></div>
                       <div className="field"><label className="label" htmlFor="cfg-pdf-hybrid-mode">hybrid_mode</label><select id="cfg-pdf-hybrid-mode" className="select" value={pdfArgValue('hybrid_mode', 'auto')} onChange={(event) => setPdfArg('hybrid_mode', event.target.value)}><option value="auto">auto</option><option value="full">full</option></select></div>
                       <div className="field"><label className="label" htmlFor="cfg-pdf-timeout">hybrid_timeout</label><input id="cfg-pdf-timeout" className="input mono" value={pdfArgValue('hybrid_timeout', '')} placeholder="默认" onChange={(event) => setPdfArg('hybrid_timeout', event.target.value)} /></div>
+                      <div className="field"><label className="label" htmlFor="cfg-pdf-upload-limit">PDF 最大上传 MB</label><input id="cfg-pdf-upload-limit" className="input mono" type="number" min="0.001" step="0.1" value={maxPdfUploadMb} onChange={(event) => setMaxPdfUploadMb(event.target.value)} /></div>
                     </div>
                   </div>
                 </div>

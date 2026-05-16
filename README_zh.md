@@ -145,6 +145,7 @@ cp backend/config.example.json backend/config.json
 | `opendataloader_pdf_args` | PDF runner 参数 |
 | `whisperx_llm_polish_enabled` / `pdf_llm_polish_enabled` | WhisperX 与 PDF 任务独立的后端 LLM 润色开关 |
 | `llm_polish_*` | 共用的 LLM 润色供应商、Base URL、API Key、模型与超时配置 |
+| `max_whisperx_upload_mb` / `max_pdf_upload_mb` | 音视频转写与 PDF 解析分别使用的上传大小限制；通过 `/api/health` 暴露，并可在管理页修改 |
 | `admin_username` / `admin_password` | 管理页账号 |
 
 完整字段以 `backend/config.example.json` 为准。管理页保存配置时也会写回 `backend/config.json`。

@@ -371,6 +371,8 @@ class ConfigResponse(BaseModel):
     llm_polish_model: str | None = None
     llm_polish_timeout_seconds: float = 60.0
     llm_polish_providers: list["LlmProviderInfo"] = Field(default_factory=list)
+    max_whisperx_upload_mb: float = 512.0
+    max_pdf_upload_mb: float = 512.0
 
 
 class LlmProviderInfo(BaseModel):
@@ -439,6 +441,8 @@ class ConfigUpdateRequest(BaseModel):
     llm_polish_clear_api_key: bool = False
     llm_polish_model: str | None = Field(default=None, max_length=4096)
     llm_polish_timeout_seconds: float = Field(default=60.0, gt=0)
+    max_whisperx_upload_mb: float = Field(default=512.0, gt=0)
+    max_pdf_upload_mb: float = Field(default=512.0, gt=0)
 
     @field_validator("whisperx_model", "whisperx_cli_model", "whisperx_openai_model")
     @classmethod

@@ -4,7 +4,6 @@ import {
   RuntimeProgressBar,
   runtimePercentText,
 } from '../components/RuntimeProgress';
-import { MAX_UPLOAD_SIZE_BYTES } from '../config/upload';
 import { AppShell, PageHeader } from '../components/Shell';
 import {
   ArtifactZipDownload,
@@ -21,6 +20,8 @@ import {
   taskTypePdf,
   taskTypeWhisperx,
   TaskType,
+  UploadLimit,
+  UploadLimits,
 } from '../types/api';
 import { startJobStatusPolling } from '../services/jobs';
 
@@ -36,9 +37,9 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function fileSizeLimitError(file: File): string | null {
-  if (file.size <= MAX_UPLOAD_SIZE_BYTES) return null;
-  return `文件超过最大上传限制：最大 ${formatBytes(MAX_UPLOAD_SIZE_BYTES)}，当前 ${formatBytes(file.size)}。`;
+function fileSizeLimitError(file: File, limit: UploadLimit): string | null {
+  if (file.size <= limit.maxBytes) return null;
+  return `文件超过最大上传限制：最大 ${formatBytes(limit.maxBytes)}，当前 ${formatBytes(file.size)}。`;
 }
 
 function resolveWhisperxPhase(job: JobStatus | null) {
@@ -148,13 +149,48 @@ export function WorkbenchPage() {
   const [job, setJob] = useState<JobStatus | null>(null);
   const [isSubmitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [uploadLimits, setUploadLimits] = useState<UploadLimits | null>(null);
+  const [uploadLimitsError, setUploadLimitsError] = useState<string | null>(null);
 
   useEffect(() => () => pollerRef.current?.stop(), []);
 
+  useEffect(() => {
+    let active = true;
+    void api
+      .health()
+      .then((response) => {
+        if (!active) return;
+        if (!response.uploadLimits) {
+          throw new Error('后端 /health 未返回上传限制。');
+        }
+        setUploadLimits(response.uploadLimits);
+        setUploadLimitsError(null);
+      })
+      .catch((nextError) => {
+        if (!active) return;
+        const message = `无法读取上传限制：${errorMessage(nextError)}`;
+        setUploadLimits(null);
+        setUploadLimitsError(message);
+        setError((currentError) => currentError ?? message);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const currentUploadLimit = uploadLimits?.[taskType] ?? null;
+  const requireUploadLimit = (): UploadLimit | null => {
+    if (currentUploadLimit) return currentUploadLimit;
+    setError(uploadLimitsError ?? '正在读取后端上传限制，请稍后再选择文件。');
+    return null;
+  };
+
   const acceptedCopy =
-    taskType === taskTypePdf
-      ? `接受常见的 PDF 文档，单个文件不超过 ${formatBytes(MAX_UPLOAD_SIZE_BYTES)}。`
-      : `接受常见的音频/视频文件，单个文件不超过 ${formatBytes(MAX_UPLOAD_SIZE_BYTES)}。`;
+    currentUploadLimit === null
+      ? '正在读取后端上传限制，读取成功后才能选择文件。'
+      : taskType === taskTypePdf
+        ? `接受常见的 PDF 文档，单个文件不超过 ${formatBytes(currentUploadLimit.maxBytes)}。`
+        : `接受常见的音频/视频文件，单个文件不超过 ${formatBytes(currentUploadLimit.maxBytes)}。`;
 
   const reset = () => {
     pollerRef.current?.stop();
@@ -179,7 +215,13 @@ export function WorkbenchPage() {
       setError(null);
       return;
     }
-    const sizeError = fileSizeLimitError(nextFile);
+    const limit = requireUploadLimit();
+    if (!limit) {
+      setFile(null);
+      if (inputRef.current) inputRef.current.value = '';
+      return;
+    }
+    const sizeError = fileSizeLimitError(nextFile, limit);
     if (sizeError) {
       setFile(null);
       setError(sizeError);
@@ -192,6 +234,10 @@ export function WorkbenchPage() {
 
   const onDrop = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
+    if (!currentUploadLimit) {
+      requireUploadLimit();
+      return;
+    }
     selectFile(event.dataTransfer.files.item(0));
   };
 
@@ -200,7 +246,9 @@ export function WorkbenchPage() {
       setError((currentError) => currentError ?? '请先选择一个文件。');
       return;
     }
-    const sizeError = fileSizeLimitError(file);
+    const limit = requireUploadLimit();
+    if (!limit) return;
+    const sizeError = fileSizeLimitError(file, limit);
     if (sizeError) {
       setFile(null);
       setError(sizeError);
@@ -284,22 +332,27 @@ export function WorkbenchPage() {
                 className="dropzone"
                 onDragOver={(event) => event.preventDefault()}
                 onDrop={onDrop}
-                onClick={() => inputRef.current?.click()}
+                onClick={() => {
+                  if (currentUploadLimit) inputRef.current?.click();
+                  else requireUploadLimit();
+                }}
                 role="button"
                 tabIndex={0}
+                aria-disabled={!currentUploadLimit}
               >
                 <div>
                   <div className="drop-icon">↑</div>
                   <h3>拖拽文件到这里，或点击选择文件</h3>
                   <p className="small">{acceptedCopy}</p>
                   {file ? <div className="selected-file">{file.name}</div> : <div style={{ height: 12 }} />}
-                  <button className="btn" type="button">
+                  <button className="btn" type="button" disabled={!currentUploadLimit}>
                     选择文件
                   </button>
                   <input
                     ref={inputRef}
                     type="file"
                     accept={taskType === taskTypePdf ? 'application/pdf,.pdf' : 'audio/*,video/*'}
+                    disabled={!currentUploadLimit}
                     onChange={(event) => selectFile(event.target.files?.item(0) ?? null)}
                   />
                 </div>
@@ -366,8 +419,8 @@ export function WorkbenchPage() {
 
               <div style={{ height: 16 }} />
               <div className="btn-row submit-row">
-                <button className="btn btn-primary" type="button" onClick={submit} disabled={isSubmitting}>
-                  {isSubmitting ? '提交中…' : '上传并启动任务'}
+                <button className="btn btn-primary" type="button" onClick={submit} disabled={isSubmitting || !currentUploadLimit}>
+                  {isSubmitting ? '提交中…' : currentUploadLimit ? '上传并启动任务' : '读取上传限制中…'}
                 </button>
               </div>
             </Box>

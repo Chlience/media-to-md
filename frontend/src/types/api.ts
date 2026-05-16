@@ -63,6 +63,21 @@ export interface PdfJobOptions {
 
 export type JobOptions = WhisperxJobOptions | PdfJobOptions;
 
+export interface UploadLimit {
+  maxMb: number;
+  maxBytes: number;
+}
+
+export interface UploadLimits {
+  whisperx: UploadLimit;
+  pdf: UploadLimit;
+}
+
+export interface HealthResponse {
+  status: string;
+  uploadLimits: UploadLimits | null;
+}
+
 export interface BackendConfig {
   model: string;
   cliModel: string;
@@ -89,6 +104,8 @@ export interface BackendConfig {
   llmPolishModel: string | null;
   llmPolishTimeoutSeconds: number;
   llmPolishProviders: LlmProviderInfo[];
+  maxWhisperxUploadMb: number;
+  maxPdfUploadMb: number;
 }
 
 export interface LlmProviderInfo {

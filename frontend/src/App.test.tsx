@@ -1,6 +1,29 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { App, getHashRoute } from './App';
-import { MAX_UPLOAD_SIZE_BYTES } from './config/upload';
+
+const DEFAULT_UPLOAD_LIMIT_BYTES = 512 * 1024 * 1024;
+const DEFAULT_HEALTH_RESPONSE = {
+  status: 'ok',
+  upload_limits: {
+    whisperx: { max_mb: 512, max_bytes: DEFAULT_UPLOAD_LIMIT_BYTES },
+    pdf: { max_mb: 256, max_bytes: 256 * 1024 * 1024 },
+  },
+};
+
+function stubHealthFetch() {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/health')) {
+        return new Response(JSON.stringify(DEFAULT_HEALTH_RESPONSE), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response('{}', { headers: { 'Content-Type': 'application/json' } });
+    }),
+  );
+}
 
 describe('hash routing shell', () => {
   afterEach(() => {
@@ -9,7 +32,8 @@ describe('hash routing shell', () => {
     vi.unstubAllGlobals();
   });
 
-  it('renders the workbench for the default route using the prototype shell', () => {
+  it('renders the workbench for the default route using the prototype shell', async () => {
+    stubHealthFetch();
     window.location.hash = '';
     const { container } = render(<App />);
     expect(screen.getByText('Media-to-MD')).toBeInTheDocument();
@@ -33,7 +57,7 @@ describe('hash routing shell', () => {
     expect(screen.queryByText('结果说明')).not.toBeInTheDocument();
     expect(screen.queryByText(/普通上传页只暴露必要参数/)).not.toBeInTheDocument();
     expect(screen.getByText('从音视频文件中提取字幕与转写文本')).toBeInTheDocument();
-    expect(screen.getByText(/接受常见的音频\/视频文件，单个文件不超过/)).toBeInTheDocument();
+    expect(await screen.findByText(/接受常见的音频\/视频文件，单个文件不超过 512\.0 MB/)).toBeInTheDocument();
     expect(screen.queryByText(/audio\/\*|video\/\*/)).not.toBeInTheDocument();
     const languageModeSelect = screen.getByLabelText('语言识别') as HTMLSelectElement;
     expect(languageModeSelect.value).toBe('auto');
@@ -56,7 +80,7 @@ describe('hash routing shell', () => {
     expect(screen.queryByText(/类型 audio\/mpeg/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /PDF 文档解析/ }));
     expect(screen.getByText('将 PDF 转换为适合大模型处理的 Markdown/TXT')).toBeInTheDocument();
-    expect(screen.getByText(/接受常见的 PDF 文档，单个文件不超过/)).toBeInTheDocument();
+    expect(screen.getByText(/接受常见的 PDF 文档，单个文件不超过 256\.0 MB/)).toBeInTheDocument();
     const pdfFileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
     const pdfFile = new File(['pdf'], 'paper.pdf', { type: 'application/pdf' });
     fireEvent.change(pdfFileInput, {
@@ -83,13 +107,15 @@ describe('hash routing shell', () => {
     expect(screen.getByText(/artifacts.zip/)).toBeInTheDocument();
   });
 
-  it('rejects files larger than the frontend upload limit before submission', () => {
+  it('rejects files larger than the backend-reported upload limit before submission', async () => {
+    stubHealthFetch();
     const { container } = render(<App />);
+    expect(await screen.findByText(/接受常见的音频\/视频文件，单个文件不超过 512\.0 MB/)).toBeInTheDocument();
     const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
     const oversizedFile = new File(['x'], 'too-large.mp4', { type: 'video/mp4' });
     Object.defineProperty(oversizedFile, 'size', {
       configurable: true,
-      value: MAX_UPLOAD_SIZE_BYTES + 1024 * 1024,
+      value: DEFAULT_UPLOAD_LIMIT_BYTES + 1024 * 1024,
     });
 
     fireEvent.change(fileInput, {
@@ -121,6 +147,8 @@ describe('hash routing shell', () => {
     expect(within(configBox as HTMLElement).queryByText(/MEDIA_TO_MD_API_BASE_URL/)).not.toBeInTheDocument();
     const defaultModelInput = within(configBox as HTMLElement).getByLabelText('默认模型');
     expect(defaultModelInput).toHaveValue('small');
+    expect(within(configBox as HTMLElement).getByLabelText('音视频最大上传 MB')).toHaveValue(512);
+    expect(within(configBox as HTMLElement).getByLabelText('PDF 最大上传 MB')).toHaveValue(512);
     fireEvent.change(defaultModelInput, { target: { value: 'medium' } });
     expect(defaultModelInput).toHaveValue('medium');
     expect(within(configBox as HTMLElement).getByLabelText('Device')).toHaveValue('');
@@ -232,6 +260,8 @@ describe('hash routing shell', () => {
       whisperx_openai_args_config: {},
       opendataloader_pdf_args: [],
       opendataloader_pdf_args_config: {},
+      max_whisperx_upload_mb: 512,
+      max_pdf_upload_mb: 256,
       whisperx_llm_polish_enabled: true,
       pdf_llm_polish_enabled: false,
       llm_polish_provider: 'deepseek',
@@ -334,6 +364,8 @@ describe('hash routing shell', () => {
       whisperx_openai_args_config: {},
       opendataloader_pdf_args: [],
       opendataloader_pdf_args_config: {},
+      max_whisperx_upload_mb: 512,
+      max_pdf_upload_mb: 256,
     };
     vi.stubGlobal(
       'fetch',
@@ -354,6 +386,8 @@ describe('hash routing shell', () => {
               pdf_llm_polish_enabled: false,
               llm_polish_provider: 'openai',
               llm_polish_timeout_seconds: 60,
+              max_whisperx_upload_mb: 512,
+              max_pdf_upload_mb: 256,
             });
           }
           return new Response(JSON.stringify(configResponse), {
@@ -396,6 +430,8 @@ describe('hash routing shell', () => {
       whisperx_openai_args_config: {},
       opendataloader_pdf_args: [],
       opendataloader_pdf_args_config: {},
+      max_whisperx_upload_mb: 512,
+      max_pdf_upload_mb: 256,
     };
     vi.stubGlobal(
       'fetch',
@@ -458,6 +494,8 @@ describe('hash routing shell', () => {
               whisperx_args_config: {},
               opendataloader_pdf_args: [],
               opendataloader_pdf_args_config: {},
+              max_whisperx_upload_mb: 512,
+              max_pdf_upload_mb: 256,
             }),
             { headers: { 'Content-Type': 'application/json' } },
           );
@@ -541,6 +579,8 @@ describe('hash routing shell', () => {
               whisperx_args_config: {},
               opendataloader_pdf_args: [],
               opendataloader_pdf_args_config: {},
+              max_whisperx_upload_mb: 512,
+              max_pdf_upload_mb: 256,
             }),
             { headers: { 'Content-Type': 'application/json' } },
           );

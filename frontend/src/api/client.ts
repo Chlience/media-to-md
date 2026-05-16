@@ -4,6 +4,7 @@ import {
   Artifact,
   API_BASE_URL,
   BackendConfig,
+  HealthResponse,
   JobCreateResponse,
   JobEvent,
   JobOptions,
@@ -18,6 +19,7 @@ import {
   parseAdminAccountInfo,
   parseAdminSession,
   parseBackendConfig,
+  parseHealthResponse,
   parseJobCreateResponse,
   parseJobEvent,
   parseJobStatus,
@@ -81,10 +83,9 @@ export class WhisperXApiClient {
     return `${this.baseUrl}${path}`;
   }
 
-  async health(): Promise<{ status: string }> {
+  async health(): Promise<HealthResponse> {
     const response = await this.request('/health');
-    const object = asObject(await response.json(), 'HealthResponse');
-    return { status: String(object.status ?? '') };
+    return parseHealthResponse(await response.json());
   }
 
   async fetchConfig(adminToken: string): Promise<BackendConfig> {
@@ -106,6 +107,8 @@ export class WhisperXApiClient {
     whisperxOpenaiTimeoutSeconds?: number;
     modelCacheOnly: boolean;
     nltkDataDir?: string | null;
+    maxWhisperxUploadMb: number;
+    maxPdfUploadMb: number;
     whisperxCliArgs: Record<string, unknown>;
     whisperxOpenaiArgs: Record<string, unknown>;
     pdfArgs?: Record<string, unknown>;
@@ -139,6 +142,8 @@ export class WhisperXApiClient {
         whisperx_cli_args: params.whisperxCliArgs,
         whisperx_openai_args: params.whisperxOpenaiArgs,
         opendataloader_pdf_args: params.pdfArgs ?? {},
+        max_whisperx_upload_mb: params.maxWhisperxUploadMb,
+        max_pdf_upload_mb: params.maxPdfUploadMb,
         whisperx_llm_polish_enabled: params.whisperxLlmPolishEnabled ?? false,
         pdf_llm_polish_enabled: params.pdfLlmPolishEnabled ?? false,
         llm_polish_provider: params.llmPolishProvider ?? 'openai',
@@ -268,6 +273,10 @@ export class WhisperXApiClient {
     const response = await this.request('/jobs/upload', {
       method: 'POST',
       body: formData,
+      headers: {
+        'X-Media-To-MD-Task-Type': params.options.taskType,
+        'X-Media-To-MD-File-Size': String(params.file.size),
+      },
     });
     return parseJobCreateResponse(await response.json());
   }
@@ -386,6 +395,7 @@ export class WhisperXApiClient {
       body?: BodyInit;
       bearerToken?: string;
       accept?: string;
+      headers?: Record<string, string>;
     } = {},
   ): Promise<Response> {
     return this.requestAbsolute(this.url(path), options);
@@ -399,9 +409,13 @@ export class WhisperXApiClient {
       body?: BodyInit;
       bearerToken?: string;
       accept?: string;
+      headers?: Record<string, string>;
     } = {},
   ): Promise<Response> {
     const headers = new Headers();
+    for (const [key, value] of Object.entries(options.headers ?? {})) {
+      headers.set(key, value);
+    }
     if (options.accept) headers.set('Accept', options.accept);
     if (options.bearerToken) {
       headers.set('Authorization', `Bearer ${options.bearerToken}`);

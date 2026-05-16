@@ -74,6 +74,16 @@ class StorageError(RuntimeError):
     pass
 
 
+class InputTooLargeError(StorageError):
+    def __init__(self, limit_bytes: int, actual_bytes: int):
+        super().__init__(
+            "uploaded file exceeds configured limit: "
+            f"max {limit_bytes} bytes, received at least {actual_bytes} bytes"
+        )
+        self.limit_bytes = limit_bytes
+        self.actual_bytes = actual_bytes
+
+
 class JobStorage:
     def __init__(self, data_root: Path):
         self.data_root = data_root.resolve()
@@ -95,7 +105,12 @@ class JobStorage:
         return self.resolve_job_relative(job_id, "logs/events.jsonl")
 
     def create_job(
-        self, fileobj: BinaryIO, filename: str, options: DiscriminatedJobOptions
+        self,
+        fileobj: BinaryIO,
+        filename: str,
+        options: DiscriminatedJobOptions,
+        *,
+        max_input_size_bytes: int | None = None,
     ) -> JobManifest:
         job_id = uuid.uuid4().hex
         job_dir = self.job_dir(job_id)
@@ -108,9 +123,13 @@ class JobStorage:
 
         stored_name = sanitize_filename(filename)
         input_path = input_dir / stored_name
-        with input_path.open("wb") as dst:
-            shutil.copyfileobj(fileobj, dst)
-        input_size_bytes = input_path.stat().st_size
+        try:
+            input_size_bytes = self._copy_upload_with_limit(
+                fileobj, input_path, max_input_size_bytes=max_input_size_bytes
+            )
+        except Exception:
+            shutil.rmtree(job_dir, ignore_errors=True)
+            raise
         input_duration_seconds = probe_media_duration_seconds(input_path)
         log_rel = "logs/job.log"
         (job_dir / log_rel).touch()
@@ -142,6 +161,28 @@ class JobStorage:
             },
         )
         return manifest
+
+    def _copy_upload_with_limit(
+        self,
+        fileobj: BinaryIO,
+        input_path: Path,
+        *,
+        max_input_size_bytes: int | None,
+    ) -> int:
+        total = 0
+        with input_path.open("wb") as dst:
+            while True:
+                chunk = fileobj.read(1024 * 1024)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if (
+                    max_input_size_bytes is not None
+                    and total > max_input_size_bytes
+                ):
+                    raise InputTooLargeError(max_input_size_bytes, total)
+                dst.write(chunk)
+        return total
 
     def read_manifest(self, job_id: str) -> JobManifest:
         path = self.manifest_path(job_id)

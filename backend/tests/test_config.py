@@ -34,6 +34,8 @@ def test_config_defaults_direct_cli_runtime(monkeypatch, tmp_path):
     monkeypatch.delenv("LLM_POLISH_API_KEY", raising=False)
     monkeypatch.delenv("LLM_POLISH_MODEL", raising=False)
     monkeypatch.delenv("LLM_POLISH_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.delenv("MEDIA_TO_MD_MAX_WHISPERX_UPLOAD_MB", raising=False)
+    monkeypatch.delenv("MEDIA_TO_MD_MAX_PDF_UPLOAD_MB", raising=False)
     monkeypatch.delenv("WHISPERX_ADMIN_USERNAME", raising=False)
     monkeypatch.delenv("WHISPERX_ADMIN_PASSWORD", raising=False)
 
@@ -66,6 +68,10 @@ def test_config_defaults_direct_cli_runtime(monkeypatch, tmp_path):
     assert settings.llm_polish_api_key is None
     assert settings.llm_polish_model is None
     assert settings.llm_polish_timeout_seconds == 60.0
+    assert settings.max_whisperx_upload_mb == 512.0
+    assert settings.max_pdf_upload_mb == 512.0
+    assert settings.max_whisperx_upload_bytes == 512 * 1024 * 1024
+    assert settings.max_pdf_upload_bytes == 512 * 1024 * 1024
     assert settings.admin_username is None
     assert settings.admin_password is None
 
@@ -111,6 +117,8 @@ def test_backend_config_json_is_loaded_and_env_can_override(monkeypatch, tmp_pat
   "llm_polish_api_key": "json-llm-key",
   "llm_polish_model": "moonshot-v1-8k",
   "llm_polish_timeout_seconds": 50,
+  "max_whisperx_upload_mb": 1024,
+  "max_pdf_upload_mb": 128,
   "whisperx_model_dir": "/models-from-json",
   "nltk_data_dir": "configured-nltk",
   "model_cache_only": true,
@@ -154,6 +162,8 @@ def test_backend_config_json_is_loaded_and_env_can_override(monkeypatch, tmp_pat
     monkeypatch.delenv("LLM_POLISH_API_KEY", raising=False)
     monkeypatch.delenv("LLM_POLISH_MODEL", raising=False)
     monkeypatch.delenv("LLM_POLISH_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.delenv("MEDIA_TO_MD_MAX_WHISPERX_UPLOAD_MB", raising=False)
+    monkeypatch.delenv("MEDIA_TO_MD_MAX_PDF_UPLOAD_MB", raising=False)
     monkeypatch.delenv("WHISPERX_ADMIN_USERNAME", raising=False)
     monkeypatch.delenv("WHISPERX_ADMIN_PASSWORD", raising=False)
 
@@ -175,6 +185,8 @@ def test_backend_config_json_is_loaded_and_env_can_override(monkeypatch, tmp_pat
     assert settings.llm_polish_api_key == "json-llm-key"
     assert settings.llm_polish_model == "moonshot-v1-8k"
     assert settings.llm_polish_timeout_seconds == 50.0
+    assert settings.max_whisperx_upload_mb == 1024.0
+    assert settings.max_pdf_upload_mb == 128.0
     assert settings.nltk_data_dir == str((tmp_path / "configured-nltk").resolve())
     assert settings.model_cache_only is True
     assert settings.whisperx_args == (
@@ -233,6 +245,8 @@ def test_backend_config_json_is_loaded_and_env_can_override(monkeypatch, tmp_pat
     monkeypatch.setenv("LLM_POLISH_API_KEY", "env-llm-key")
     monkeypatch.setenv("LLM_POLISH_MODEL", "deepseek-chat")
     monkeypatch.setenv("LLM_POLISH_TIMEOUT_SECONDS", "80")
+    monkeypatch.setenv("MEDIA_TO_MD_MAX_WHISPERX_UPLOAD_MB", "2048")
+    monkeypatch.setenv("MEDIA_TO_MD_MAX_PDF_UPLOAD_MB", "64")
     monkeypatch.setenv(
         "WHISPERX_ARGS_JSON", '{"batch_size": 4, "compute_type": "float16"}'
     )
@@ -262,6 +276,8 @@ def test_backend_config_json_is_loaded_and_env_can_override(monkeypatch, tmp_pat
     assert overridden.llm_polish_api_key == "env-llm-key"
     assert overridden.llm_polish_model == "deepseek-chat"
     assert overridden.llm_polish_timeout_seconds == 80.0
+    assert overridden.max_whisperx_upload_mb == 2048.0
+    assert overridden.max_pdf_upload_mb == 64.0
     assert overridden.nltk_data_dir == "/nltk-from-env"
     assert overridden.model_cache_only is False
     assert overridden.whisperx_args == (

@@ -145,6 +145,7 @@ Common backend config keys:
 | `opendataloader_pdf_args` | PDF runner arguments |
 | `whisperx_llm_polish_enabled` / `pdf_llm_polish_enabled` | Separate backend-controlled LLM polishing switches for WhisperX and PDF tasks |
 | `llm_polish_*` | Shared LLM polishing provider, base URL, API key, model, and timeout |
+| `max_whisperx_upload_mb` / `max_pdf_upload_mb` | Separate upload-size limits for audio/video transcription and PDF parsing; exposed via `/api/health` and editable from the admin page |
 | `admin_username` / `admin_password` | Admin page credentials |
 
 The complete reference is `backend/config.example.json`. Saving settings from the admin page writes back to `backend/config.json`.

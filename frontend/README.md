@@ -36,7 +36,7 @@ npm run typecheck
 http://localhost:8000/api
 ```
 
-前端文件选择会先按 `MEDIA_TO_MD_MAX_UPLOAD_MB` 拒绝超限文件；未设置时默认 `512` MB。
+前端启动后会读取后端 `/api/health` 中的 `upload_limits`，按任务类型分别在真实传输前拒绝超限文件。上传限制由后端配置与管理页控制，不再使用前端环境变量。
 
 注意：
 

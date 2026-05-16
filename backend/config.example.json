@@ -35,6 +35,8 @@
   "llm_polish_api_key": null,
   "llm_polish_model": null,
   "llm_polish_timeout_seconds": 60,
+  "max_whisperx_upload_mb": 512,
+  "max_pdf_upload_mb": 512,
   "admin_username": "admin",
   "admin_password": "change-me-before-use"
 }
