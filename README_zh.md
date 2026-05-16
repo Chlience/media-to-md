@@ -107,7 +107,7 @@ ffmpeg -version
 
 `whisperx_openai_model` 应使用远端 `/v1/models` 返回的模型 id。管理页可以请求 `OpenAI Base URL + /models`，在右侧下拉框展示返回的模型，并把选中的 id 写回默认模型字段。
 
-OpenAI 模式会向 `/v1/audio/transcriptions` 发送同步 multipart 请求，固定请求 `response_format=srt` 并启用说话人分离；后端保存 `result.srt` 后，会删除 SRT 序号行和时间行派生 `result.txt`。Media-to-MD 只转发适合放入远端 multipart 请求的任务级参数：`batch_size`、`chunk_size`、`no_align`、`min_speakers`、`max_speakers`、`speaker_embeddings`。
+OpenAI 模式会向 `/v1/audio/transcriptions` 发送同步 multipart 请求，固定请求 `response_format=srt` 并启用说话人分离；后端保存 `result.srt` 后，会删除 SRT 序号行和时间行派生 `result.txt`。在请求远端之前，后端可以先把已接收的原文件转成临时 16 kHz 单声道 MP3（`whisperx_openai_transcode_to_mp3` 默认开启，`whisperx_openai_mp3_bitrate` 默认 `64k`），用于降低第二跳上传体积，减少远端 413。Media-to-MD 只转发适合放入远端 multipart 请求的任务级参数：`batch_size`、`chunk_size`、`no_align`、`min_speakers`、`max_speakers`、`speaker_embeddings`。
 
 设备、compute type、缓存路径、说话人分离模型和 align model 都由 WhisperX 服务端控制，Media-to-MD 不再转发。对齐模型由 WhisperX 根据检测语言自动选择；如需覆盖，应在远端服务自身配置。
 
@@ -142,6 +142,7 @@ cp backend/config.example.json backend/config.json
 | `model_cache_only` | 是否只使用本地缓存 |
 | `whisperx_cli_args` | CLI 模式参数 |
 | `whisperx_openai_args` | OpenAI multipart 转发参数：`batch_size`、`chunk_size`、`no_align`、`min_speakers`、`max_speakers`、`speaker_embeddings` |
+| `whisperx_openai_transcode_to_mp3` / `whisperx_openai_mp3_bitrate` | OpenAI 模式是否在请求远端前把已接收文件转成临时 MP3，以及目标码率（如 `64k`） |
 | `opendataloader_pdf_args` | PDF runner 参数 |
 | `whisperx_llm_polish_enabled` / `pdf_llm_polish_enabled` | WhisperX 与 PDF 任务独立的后端 LLM 润色开关 |
 | `llm_polish_*` | 共用的 LLM 润色供应商、Base URL、API Key、模型与超时配置 |

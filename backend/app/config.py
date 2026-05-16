@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -24,6 +25,11 @@ WHISPERX_BACKENDS = {"cli", "openai"}
 DEFAULT_MAX_UPLOAD_MB = 512.0
 MAX_WHISPERX_UPLOAD_MB_ENV = "MEDIA_TO_MD_MAX_WHISPERX_UPLOAD_MB"
 MAX_PDF_UPLOAD_MB_ENV = "MEDIA_TO_MD_MAX_PDF_UPLOAD_MB"
+WHISPERX_OPENAI_TRANSCODE_TO_MP3_ENV = "WHISPERX_OPENAI_TRANSCODE_TO_MP3"
+WHISPERX_OPENAI_MP3_BITRATE_ENV = "WHISPERX_OPENAI_MP3_BITRATE"
+DEFAULT_WHISPERX_OPENAI_TRANSCODE_TO_MP3 = True
+DEFAULT_WHISPERX_OPENAI_MP3_BITRATE = "64k"
+_MP3_BITRATE_RE = re.compile(r"^([1-9][0-9]{0,3})k$")
 
 _CONFIG_ARG_SPECS: dict[str, dict[str, Any]] = {
     "batch_size": {"flag": "--batch_size", "type": "int", "min": 1},
@@ -131,6 +137,8 @@ class Settings:
     whisperx_openai_base_url: str | None = None
     whisperx_openai_api_key: str | None = None
     whisperx_openai_timeout_seconds: float = 3600.0
+    whisperx_openai_transcode_to_mp3: bool = DEFAULT_WHISPERX_OPENAI_TRANSCODE_TO_MP3
+    whisperx_openai_mp3_bitrate: str = DEFAULT_WHISPERX_OPENAI_MP3_BITRATE
     model_cache_only: bool = False
     nltk_data_dir: str | None = None
     whisperx_args: tuple[str, ...] = ()
@@ -218,6 +226,17 @@ def _model_setting(value: Any, name: str, default: str = "small") -> str:
     if any(char in model for char in ("\x00", "\n", "\r")):
         raise ValueError(f"{name} must be single-line text")
     return model
+
+
+def _mp3_bitrate_setting(value: Any, name: str) -> str:
+    text = (_optional_str(value) or DEFAULT_WHISPERX_OPENAI_MP3_BITRATE).lower()
+    match = _MP3_BITRATE_RE.fullmatch(text)
+    if match is None:
+        raise ValueError(f"{name} must look like '64k'")
+    bitrate_kbps = int(match.group(1))
+    if bitrate_kbps < 8 or bitrate_kbps > 320:
+        raise ValueError(f"{name} must be between 8k and 320k")
+    return f"{bitrate_kbps}k"
 
 
 def _positive_float(value: Any, name: str, default: float) -> float:
@@ -729,6 +748,18 @@ def get_settings() -> Settings:
         "whisperx_openai_timeout_seconds",
         3600.0,
     )
+    whisperx_openai_transcode_to_mp3 = _bool_config(
+        os.getenv(WHISPERX_OPENAI_TRANSCODE_TO_MP3_ENV)
+        if os.getenv(WHISPERX_OPENAI_TRANSCODE_TO_MP3_ENV) is not None
+        else config.get("whisperx_openai_transcode_to_mp3"),
+        DEFAULT_WHISPERX_OPENAI_TRANSCODE_TO_MP3,
+    )
+    whisperx_openai_mp3_bitrate = _mp3_bitrate_setting(
+        os.getenv(WHISPERX_OPENAI_MP3_BITRATE_ENV)
+        if os.getenv(WHISPERX_OPENAI_MP3_BITRATE_ENV) is not None
+        else config.get("whisperx_openai_mp3_bitrate"),
+        "whisperx_openai_mp3_bitrate",
+    )
     whisperx_llm_polish_enabled = _bool_config(
         os.getenv("WHISPERX_LLM_POLISH_ENABLED")
         if os.getenv("WHISPERX_LLM_POLISH_ENABLED") is not None
@@ -835,6 +866,8 @@ def get_settings() -> Settings:
         whisperx_openai_base_url=whisperx_openai_base_url,
         whisperx_openai_api_key=whisperx_openai_api_key,
         whisperx_openai_timeout_seconds=whisperx_openai_timeout_seconds,
+        whisperx_openai_transcode_to_mp3=whisperx_openai_transcode_to_mp3,
+        whisperx_openai_mp3_bitrate=whisperx_openai_mp3_bitrate,
         model_cache_only=_bool_config(
             env_cache_only, _bool_config(config.get("model_cache_only"), False)
         ),

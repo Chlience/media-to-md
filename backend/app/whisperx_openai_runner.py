@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import mimetypes
+import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -63,6 +64,8 @@ class OpenAIWhisperXRunnerConfig:
     default_model: str = "small"
     timeout_seconds: float = 3600.0
     progress_poll_interval_seconds: float = 2.0
+    transcode_to_mp3: bool = True
+    mp3_bitrate: str = "64k"
     config_fields: Mapping[str, Any] = field(default_factory=dict)
     llm_config: LlmPolishConfig = field(default_factory=LlmPolishConfig)
 
@@ -412,33 +415,40 @@ class OpenAIWhisperXRunner:
                 )
             )
 
-        post_task = asyncio.create_task(
-            asyncio.to_thread(
-                self._post_transcription,
-                endpoint,
-                fields,
-                request.input_path,
-                extra_headers,
+        request.output_dir.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(
+            prefix="openai-upload.", dir=request.output_dir.parent
+        ) as upload_tmp:
+            upload_path = await self._prepare_upload_path(
+                request, Path(upload_tmp), on_log, on_progress
             )
-        )
-        progress_task = (
-            asyncio.create_task(
-                self._poll_runtime_progress_until_done(
-                    request,
-                    on_log,
-                    on_progress,
-                    progress["url"],
-                    post_task,
+            post_task = asyncio.create_task(
+                asyncio.to_thread(
+                    self._post_transcription,
+                    endpoint,
+                    fields,
+                    upload_path,
+                    extra_headers,
                 )
             )
-            if progress is not None
-            else None
-        )
-        try:
-            srt_content = await post_task
-        finally:
-            if progress_task is not None:
-                await progress_task
+            progress_task = (
+                asyncio.create_task(
+                    self._poll_runtime_progress_until_done(
+                        request,
+                        on_log,
+                        on_progress,
+                        progress["url"],
+                        post_task,
+                    )
+                )
+                if progress is not None
+                else None
+            )
+            try:
+                srt_content = await post_task
+            finally:
+                if progress_task is not None:
+                    await progress_task
         write_openai_response_artifacts(srt_content, request.output_dir)
         await self._log(
             request,
@@ -452,6 +462,98 @@ class OpenAIWhisperXRunner:
             endpoint=endpoint,
             response_text=srt_content,
         )
+
+    async def _prepare_upload_path(
+        self,
+        request: OpenAIWhisperXRunRequest,
+        temp_dir: Path,
+        on_log: LogCallback | None,
+        on_progress: ProgressCallback | None,
+    ) -> Path:
+        if not self.config.transcode_to_mp3:
+            return request.input_path
+        target_path = temp_dir / "remote-upload.mp3"
+        if on_progress is not None:
+            await _maybe_await(
+                on_progress(
+                    {
+                        "stage": "prepare",
+                        "stageKind": "prepare",
+                        "stageLabel": "转换为 MP3",
+                        "stageDetail": "正在提取音频并压缩为 MP3，以降低远端上传体积。",
+                        "stagePercent": None,
+                        "message": "正在转换为 MP3。",
+                    }
+                )
+            )
+        source_size = request.input_path.stat().st_size
+        await self._log(
+            request,
+            on_log,
+            (
+                "Converting media to MP3 before OpenAI-compatible upload: "
+                f"{request.input_path.name} ({source_size} bytes) -> "
+                f"{target_path.name} ({self.config.mp3_bitrate})."
+            ),
+        )
+        await self._transcode_to_mp3(request.input_path, target_path)
+        target_size = target_path.stat().st_size
+        await self._log(
+            request,
+            on_log,
+            f"MP3 upload payload ready: {target_size} bytes.",
+        )
+        return target_path
+
+    async def _transcode_to_mp3(self, input_path: Path, output_path: Path) -> None:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        argv = [
+            "ffmpeg",
+            "-hide_banner",
+            "-nostdin",
+            "-loglevel",
+            "error",
+            "-y",
+            "-i",
+            str(input_path),
+            "-vn",
+            "-map_metadata",
+            "-1",
+            "-ac",
+            "1",
+            "-ar",
+            "16000",
+            "-b:a",
+            self.config.mp3_bitrate,
+            str(output_path),
+        ]
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *argv,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+        except FileNotFoundError as exc:
+            raise WhisperXRunnerError(
+                WhisperXErrorKind.PROCESS,
+                "OpenAI MP3 conversion requires ffmpeg, but ffmpeg was not found.",
+            ) from exc
+        _, stderr = await process.communicate()
+        if process.returncode != 0:
+            detail = stderr.decode("utf-8", errors="replace").strip()
+            message = "OpenAI MP3 conversion failed."
+            if detail:
+                message = f"{message} {detail}"
+            raise WhisperXRunnerError(
+                WhisperXErrorKind.PROCESS,
+                message,
+                process.returncode,
+            )
+        if not output_path.is_file() or output_path.stat().st_size <= 0:
+            raise WhisperXRunnerError(
+                WhisperXErrorKind.PROCESS,
+                "OpenAI MP3 conversion produced an empty file.",
+            )
 
     async def _log(
         self,
@@ -652,6 +754,10 @@ class JobStorageOpenAIWhisperXRunner(OpenAIWhisperXRunner):
                 timeout_seconds=float(
                     getattr(settings, "whisperx_openai_timeout_seconds", 3600.0)
                 ),
+                transcode_to_mp3=bool(
+                    getattr(settings, "whisperx_openai_transcode_to_mp3", True)
+                ),
+                mp3_bitrate=getattr(settings, "whisperx_openai_mp3_bitrate", "64k"),
                 config_fields=config_fields,
                 llm_config=llm_config_from_settings(settings, task_type="whisperx"),
             ),

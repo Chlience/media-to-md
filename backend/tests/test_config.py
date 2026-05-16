@@ -27,6 +27,8 @@ def test_config_defaults_direct_cli_runtime(monkeypatch, tmp_path):
     monkeypatch.delenv("WHISPERX_OPENAI_BASE_URL", raising=False)
     monkeypatch.delenv("WHISPERX_OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("WHISPERX_OPENAI_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.delenv("WHISPERX_OPENAI_TRANSCODE_TO_MP3", raising=False)
+    monkeypatch.delenv("WHISPERX_OPENAI_MP3_BITRATE", raising=False)
     monkeypatch.delenv("WHISPERX_LLM_POLISH_ENABLED", raising=False)
     monkeypatch.delenv("PDF_LLM_POLISH_ENABLED", raising=False)
     monkeypatch.delenv("LLM_POLISH_PROVIDER", raising=False)
@@ -49,6 +51,8 @@ def test_config_defaults_direct_cli_runtime(monkeypatch, tmp_path):
     assert settings.whisperx_openai_base_url is None
     assert settings.whisperx_openai_api_key is None
     assert settings.whisperx_openai_timeout_seconds == 3600.0
+    assert settings.whisperx_openai_transcode_to_mp3 is True
+    assert settings.whisperx_openai_mp3_bitrate == "64k"
     assert settings.nltk_data_dir == "/models/nltk_data"
     assert settings.whisperx_args == ()
     assert settings.whisperx_args_config == {}
@@ -110,6 +114,8 @@ def test_backend_config_json_is_loaded_and_env_can_override(monkeypatch, tmp_pat
   "whisperx_openai_base_url": "http://localhost:9000/v1",
   "whisperx_openai_api_key": "json-key",
   "whisperx_openai_timeout_seconds": 120,
+  "whisperx_openai_transcode_to_mp3": false,
+  "whisperx_openai_mp3_bitrate": "96k",
   "whisperx_llm_polish_enabled": true,
   "pdf_llm_polish_enabled": false,
   "llm_polish_provider": "moonshot",
@@ -155,6 +161,8 @@ def test_backend_config_json_is_loaded_and_env_can_override(monkeypatch, tmp_pat
     monkeypatch.delenv("WHISPERX_OPENAI_BASE_URL", raising=False)
     monkeypatch.delenv("WHISPERX_OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("WHISPERX_OPENAI_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.delenv("WHISPERX_OPENAI_TRANSCODE_TO_MP3", raising=False)
+    monkeypatch.delenv("WHISPERX_OPENAI_MP3_BITRATE", raising=False)
     monkeypatch.delenv("WHISPERX_LLM_POLISH_ENABLED", raising=False)
     monkeypatch.delenv("PDF_LLM_POLISH_ENABLED", raising=False)
     monkeypatch.delenv("LLM_POLISH_PROVIDER", raising=False)
@@ -178,6 +186,8 @@ def test_backend_config_json_is_loaded_and_env_can_override(monkeypatch, tmp_pat
     assert settings.whisperx_openai_base_url == "http://localhost:9000/v1"
     assert settings.whisperx_openai_api_key == "json-key"
     assert settings.whisperx_openai_timeout_seconds == 120.0
+    assert settings.whisperx_openai_transcode_to_mp3 is False
+    assert settings.whisperx_openai_mp3_bitrate == "96k"
     assert settings.whisperx_llm_polish_enabled is True
     assert settings.pdf_llm_polish_enabled is False
     assert settings.llm_polish_provider == "moonshot"
@@ -238,6 +248,8 @@ def test_backend_config_json_is_loaded_and_env_can_override(monkeypatch, tmp_pat
     monkeypatch.setenv("WHISPERX_OPENAI_BASE_URL", "http://127.0.0.1:9100/v1")
     monkeypatch.setenv("WHISPERX_OPENAI_API_KEY", "env-key")
     monkeypatch.setenv("WHISPERX_OPENAI_TIMEOUT_SECONDS", "240")
+    monkeypatch.setenv("WHISPERX_OPENAI_TRANSCODE_TO_MP3", "true")
+    monkeypatch.setenv("WHISPERX_OPENAI_MP3_BITRATE", "48k")
     monkeypatch.setenv("WHISPERX_LLM_POLISH_ENABLED", "false")
     monkeypatch.setenv("PDF_LLM_POLISH_ENABLED", "true")
     monkeypatch.setenv("LLM_POLISH_PROVIDER", "deepseek")
@@ -269,6 +281,8 @@ def test_backend_config_json_is_loaded_and_env_can_override(monkeypatch, tmp_pat
     assert overridden.whisperx_openai_base_url == "http://127.0.0.1:9100/v1"
     assert overridden.whisperx_openai_api_key == "env-key"
     assert overridden.whisperx_openai_timeout_seconds == 240.0
+    assert overridden.whisperx_openai_transcode_to_mp3 is True
+    assert overridden.whisperx_openai_mp3_bitrate == "48k"
     assert overridden.whisperx_llm_polish_enabled is False
     assert overridden.pdf_llm_polish_enabled is True
     assert overridden.llm_polish_provider == "deepseek"

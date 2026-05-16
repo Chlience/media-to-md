@@ -77,11 +77,13 @@ opendataloader-pdf --help
 {
   "whisperx_backend": "openai",
   "whisperx_openai_base_url": "http://localhost:9000/v1",
-  "whisperx_openai_api_key": null
+  "whisperx_openai_api_key": null,
+  "whisperx_openai_transcode_to_mp3": true,
+  "whisperx_openai_mp3_bitrate": "64k"
 }
 ```
 
-此时音视频任务会调用 `/v1/audio/transcriptions`，并在 Media-to-MD 侧生成原有的 `txt/srt/vtt/json` artifacts。
+此时音视频任务会调用 `/v1/audio/transcriptions`，请求远端前默认先把已接收文件转成临时 MP3 以降低第二跳上传体积，并在 Media-to-MD 侧生成 `result.srt` 与从 SRT 派生的 `result.txt`。
 
 ## 后端
 

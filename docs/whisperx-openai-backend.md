@@ -29,6 +29,8 @@ PDF 任务不受影响，仍走 `opendataloader-pdf`。
   "whisperx_openai_base_url": "http://localhost:9000/v1",
   "whisperx_openai_api_key": null,
   "whisperx_openai_timeout_seconds": 3600,
+  "whisperx_openai_transcode_to_mp3": true,
+  "whisperx_openai_mp3_bitrate": "64k",
   "whisperx_cli_model": "small",
   "whisperx_openai_model": "large-v2",
   "whisperx_openai_args": {
@@ -45,6 +47,8 @@ export WHISPERX_BACKEND=openai
 export WHISPERX_OPENAI_BASE_URL=http://localhost:9000/v1
 export WHISPERX_OPENAI_API_KEY=your-server-api-key
 export WHISPERX_OPENAI_TIMEOUT_SECONDS=3600
+export WHISPERX_OPENAI_TRANSCODE_TO_MP3=true
+export WHISPERX_OPENAI_MP3_BITRATE=64k
 export WHISPERX_OPENAI_ARGS_JSON='{"batch_size":8}'
 ```
 
@@ -112,6 +116,19 @@ Media-to-MD 会向 OpenAI 兼容接口发送 multipart 表单：
 
 `device`, `compute_type`, `model_dir`, `nltk_data_dir`、`diarize_model` 这类运行环境/模型加载参数在 `openai` 模式下由远端 `whisperx-openai-server` 自己控制，Media-to-MD 不转发。旧版 `whisperx_args` 仍会作为兼容回退读取；保存配置时会拆为 `whisperx_cli_args` 与 `whisperx_openai_args`。
 
+## 上传前 MP3 转换
+
+OpenAI 兼容模式默认开启 `whisperx_openai_transcode_to_mp3`。任务创建时仍按音视频上传限制接收原文件；进入 OpenAI runner 后，Media-to-MD 会先在任务目录中创建临时文件，把原文件转换为 16 kHz、单声道、移除元数据的 MP3，然后把临时 MP3 作为 multipart `file` 发送到远端 `/v1/audio/transcriptions`。
+
+这解决的是 Media-to-MD 到远端 WhisperX 服务之间的第二跳上传体积问题，例如远端返回 `HTTP 413: Uploaded file exceeds 512 MB`。它不会绕过浏览器到 Media-to-MD 的第一跳上传限制；第一跳仍由 `max_whisperx_upload_mb` 控制。转换完成后临时 MP3 会随临时目录清理，不会出现在 artifacts 中。
+
+可调项：
+
+- `whisperx_openai_transcode_to_mp3` / `WHISPERX_OPENAI_TRANSCODE_TO_MP3`：是否启用转换，默认 `true`。
+- `whisperx_openai_mp3_bitrate` / `WHISPERX_OPENAI_MP3_BITRATE`：目标码率，格式如 `64k`，有效范围 `8k` 到 `320k`，默认 `64k`。
+
+开启该能力要求 Media-to-MD 后端机器可执行 `ffmpeg`。如果本机缺少 `ffmpeg`，任务会失败并在日志中提示；如果远端服务必须接收原容器，可在管理页或配置中关闭该开关。
+
 ## 输出文件
 
 OpenAI 兼容接口直接返回 SRT；Media-to-MD 会把它保存为字幕并派生纯文本 artifacts：
@@ -129,6 +146,7 @@ OpenAI 兼容接口直接返回 SRT；Media-to-MD 会把它保存为字幕并派
 - OpenAI Base URL。
 - OpenAI API Key：留空会保持已配置值不变。
 - OpenAI timeout seconds。
+- 转 MP3 后上传，以及 MP3 bitrate。
 - 清除 OpenAI Key。
 - 拉取 WhisperX 模型：请求 `OpenAI Base URL + /models`，返回后可在右侧下拉框选择，并自动写入上方默认模型字段。
 

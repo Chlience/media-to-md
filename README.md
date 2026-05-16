@@ -107,7 +107,7 @@ After starting that service, point `whisperx_openai_base_url` to its `/v1` endpo
 
 Use a model id returned by the remote `/v1/models` endpoint. The admin page can request `OpenAI Base URL + /models`, show the returned ids in a selector, and write the selected id back to `whisperx_openai_model`.
 
-In OpenAI mode, Media-to-MD sends synchronous `/v1/audio/transcriptions` multipart requests with `response_format=srt` and diarization enabled, then derives `result.txt` from `result.srt` by removing SRT sequence and timestamp lines. It forwards only request-level options that belong in the remote multipart request: `batch_size`, `chunk_size`, `no_align`, `min_speakers`, `max_speakers`, and `speaker_embeddings`.
+In OpenAI mode, Media-to-MD sends synchronous `/v1/audio/transcriptions` multipart requests with `response_format=srt` and diarization enabled, then derives `result.txt` from `result.srt` by removing SRT sequence and timestamp lines. Before that remote request it can transcode the accepted upload to a temporary 16 kHz mono MP3 payload (`whisperx_openai_transcode_to_mp3`, enabled by default; bitrate controlled by `whisperx_openai_mp3_bitrate`, default `64k`) to reduce the second-hop upload size and avoid remote 413 errors. It forwards only request-level options that belong in the remote multipart request: `batch_size`, `chunk_size`, `no_align`, `min_speakers`, `max_speakers`, and `speaker_embeddings`.
 
 Runtime and model-loading details stay on the WhisperX service: device, compute type, cache paths, diarization model, and align model are not forwarded by Media-to-MD. The align model is selected by WhisperX from the detected language unless the remote service itself is configured otherwise.
 
@@ -142,6 +142,7 @@ Common backend config keys:
 | `model_cache_only` | Whether to use local model cache only |
 | `whisperx_cli_args` | Local CLI mode arguments |
 | `whisperx_openai_args` | OpenAI multipart overrides: `batch_size`, `chunk_size`, `no_align`, `min_speakers`, `max_speakers`, `speaker_embeddings` |
+| `whisperx_openai_transcode_to_mp3` / `whisperx_openai_mp3_bitrate` | Whether OpenAI-compatible mode should transcode the accepted upload to a temporary MP3 before posting to the remote service, and the target bitrate such as `64k` |
 | `opendataloader_pdf_args` | PDF runner arguments |
 | `whisperx_llm_polish_enabled` / `pdf_llm_polish_enabled` | Separate backend-controlled LLM polishing switches for WhisperX and PDF tasks |
 | `llm_polish_*` | Shared LLM polishing provider, base URL, API key, model, and timeout |

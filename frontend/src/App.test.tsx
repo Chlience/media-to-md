@@ -203,6 +203,8 @@ describe('hash routing shell', () => {
     expect(within(configBox as HTMLElement).getByLabelText('OpenAI Base URL')).toBeInTheDocument();
     expect(within(configBox as HTMLElement).getByLabelText('OpenAI API Key')).toBeInTheDocument();
     expect(within(configBox as HTMLElement).getByLabelText('OpenAI timeout seconds')).toHaveValue('3600');
+    expect(within(configBox as HTMLElement).getByLabelText('转 MP3 后上传')).toHaveValue('true');
+    expect(within(configBox as HTMLElement).getByLabelText('MP3 bitrate')).toHaveValue('64k');
     expect(within(configBox as HTMLElement).getByLabelText('Batch size')).toHaveValue('');
     expect(within(configBox as HTMLElement).getByLabelText('Batch size')).toHaveAttribute('placeholder', '远端默认');
     fireEvent.change(within(configBox as HTMLElement).getByLabelText('Batch size'), {
@@ -251,6 +253,8 @@ describe('hash routing shell', () => {
       whisperx_openai_base_url: null,
       whisperx_openai_api_key_configured: false,
       whisperx_openai_timeout_seconds: 3600,
+      whisperx_openai_transcode_to_mp3: true,
+      whisperx_openai_mp3_bitrate: '64k',
       model_cache_only: false,
       nltk_data_dir: null,
       whisperx_args: [],
@@ -355,6 +359,8 @@ describe('hash routing shell', () => {
       whisperx_openai_base_url: null,
       whisperx_openai_api_key_configured: false,
       whisperx_openai_timeout_seconds: 3600,
+      whisperx_openai_transcode_to_mp3: true,
+      whisperx_openai_mp3_bitrate: '64k',
       model_cache_only: false,
       nltk_data_dir: null,
       whisperx_args: [],
@@ -382,6 +388,8 @@ describe('hash routing shell', () => {
               whisperx_cli_model: 'small',
               whisperx_openai_model: 'large-v2',
               whisperx_backend: 'cli',
+              whisperx_openai_transcode_to_mp3: true,
+              whisperx_openai_mp3_bitrate: '64k',
               whisperx_llm_polish_enabled: false,
               pdf_llm_polish_enabled: false,
               llm_polish_provider: 'openai',
@@ -421,6 +429,8 @@ describe('hash routing shell', () => {
       whisperx_openai_base_url: null,
       whisperx_openai_api_key_configured: false,
       whisperx_openai_timeout_seconds: 3600,
+      whisperx_openai_transcode_to_mp3: true,
+      whisperx_openai_mp3_bitrate: '64k',
       model_cache_only: false,
       nltk_data_dir: null,
       whisperx_args: [],
@@ -573,6 +583,8 @@ describe('hash routing shell', () => {
               whisperx_openai_base_url: null,
               whisperx_openai_api_key_configured: false,
               whisperx_openai_timeout_seconds: 3600,
+              whisperx_openai_transcode_to_mp3: true,
+              whisperx_openai_mp3_bitrate: '64k',
               model_cache_only: false,
               nltk_data_dir: null,
               whisperx_args: [],

@@ -138,6 +138,8 @@ def test_upload_status_config_reconstruct_from_filesystem(tmp_path):
         "whisperx_openai_base_url": None,
         "whisperx_openai_api_key_configured": False,
         "whisperx_openai_timeout_seconds": 3600.0,
+        "whisperx_openai_transcode_to_mp3": True,
+        "whisperx_openai_mp3_bitrate": "64k",
         "model_cache_only": True,
         "nltk_data_dir": "/models/nltk_data",
         "whisperx_args": [],
@@ -480,6 +482,8 @@ def test_admin_can_update_backend_config(monkeypatch, tmp_path):
             "whisperx_openai_base_url": "http://localhost:9000/v1",
             "whisperx_openai_api_key": "test-key",
             "whisperx_openai_timeout_seconds": 180,
+            "whisperx_openai_transcode_to_mp3": True,
+            "whisperx_openai_mp3_bitrate": "96k",
             "nltk_data_dir": "/models/nltk",
             "model_cache_only": True,
             "whisperx_cli_args": {
@@ -515,6 +519,8 @@ def test_admin_can_update_backend_config(monkeypatch, tmp_path):
         "whisperx_openai_base_url": "http://localhost:9000/v1",
         "whisperx_openai_api_key_configured": True,
         "whisperx_openai_timeout_seconds": 180.0,
+        "whisperx_openai_transcode_to_mp3": True,
+        "whisperx_openai_mp3_bitrate": "96k",
         "model_cache_only": True,
         "nltk_data_dir": "/models/nltk",
         "whisperx_args": [
@@ -585,6 +591,8 @@ def test_admin_can_update_backend_config(monkeypatch, tmp_path):
     assert '"diarize_model": "/models/local-pyannote"' in saved
     assert '"whisperx_backend": "openai"' in saved
     assert '"whisperx_openai_api_key": "test-key"' in saved
+    assert '"whisperx_openai_transcode_to_mp3": true' in saved
+    assert '"whisperx_openai_mp3_bitrate": "96k"' in saved
     assert '"llm_polish_enabled"' not in saved
     assert '"whisperx_llm_polish_enabled": true' in saved
     assert '"pdf_llm_polish_enabled": false' in saved
@@ -613,6 +621,8 @@ def test_admin_can_update_backend_config(monkeypatch, tmp_path):
     assert isinstance(whisperx_runner, JobStorageOpenAIWhisperXRunner)
     assert whisperx_runner.config.default_model == "/models/faster-whisper-large-v2"
     assert whisperx_runner.config.base_url == "http://localhost:9000/v1"
+    assert whisperx_runner.config.transcode_to_mp3 is True
+    assert whisperx_runner.config.mp3_bitrate == "96k"
     assert whisperx_runner.config.config_fields["batch_size"] == 12
     assert "compute_type" not in whisperx_runner.config.config_fields
     assert whisperx_runner.config.llm_config.enabled is True

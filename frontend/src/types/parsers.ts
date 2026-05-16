@@ -122,6 +122,8 @@ export function parseBackendConfig(json: unknown): BackendConfig {
     whisperxOpenaiBaseUrl: asNullableString(object.whisperx_openai_base_url),
     whisperxOpenaiApiKeyConfigured: asBoolean(object.whisperx_openai_api_key_configured, false),
     whisperxOpenaiTimeoutSeconds: asNumber(object.whisperx_openai_timeout_seconds) ?? 3600,
+    whisperxOpenaiTranscodeToMp3: asBoolean(object.whisperx_openai_transcode_to_mp3, true),
+    whisperxOpenaiMp3Bitrate: asString(object.whisperx_openai_mp3_bitrate, '64k'),
     modelCacheOnly: asBoolean(object.model_cache_only, false),
     whisperxArgs: asStringArray(rawWhisperxArgs),
     whisperxArgsConfig,

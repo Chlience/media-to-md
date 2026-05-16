@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import io
 import json
+import mimetypes
 import tempfile
 import time
 import unittest
@@ -240,6 +241,7 @@ class OpenAIWhisperXRunnerTests(unittest.TestCase):
                             api_key="secret",
                             config_fields={"batch_size": 4},
                             timeout_seconds=123,
+                            transcode_to_mp3=False,
                         )
                     ).run(request)
 
@@ -273,6 +275,75 @@ class OpenAIWhisperXRunnerTests(unittest.TestCase):
                 )
                 self.assertFalse((request.output_dir / "result.vtt").exists())
                 self.assertFalse((request.output_dir / "result.json").exists())
+
+        asyncio.run(exercise())
+
+    def test_runner_transcodes_to_mp3_before_post_when_enabled(self):
+        async def exercise():
+            with tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                input_path = root / "video.mp4"
+                input_path.write_bytes(b"fake video")
+                request = OpenAIWhisperXRunRequest(
+                    input_path=input_path,
+                    output_dir=root / "output",
+                    log_path=root / "logs" / "job.log",
+                    options=WhisperXOptions(model="small"),
+                )
+                captured = {}
+
+                class FakeResponse:
+                    status = 200
+
+                    def __enter__(self):
+                        return self
+
+                    def __exit__(self, *args):
+                        return None
+
+                    def read(self):
+                        return b"1\n00:00:00,000 --> 00:00:01,000\nok\n"
+
+                async def fake_transcode(self, source_path, output_path):
+                    captured["transcode_source"] = source_path
+                    captured["transcode_output"] = output_path
+                    output_path.write_bytes(b"fake mp3")
+
+                def fake_urlopen(http_request, timeout):
+                    captured["body"] = http_request.data
+                    captured["headers"] = dict(http_request.header_items())
+                    return FakeResponse()
+
+                with mock.patch.object(
+                    OpenAIWhisperXRunner,
+                    "_transcode_to_mp3",
+                    fake_transcode,
+                ), mock.patch(
+                    "app.whisperx_openai_runner.urllib.request.urlopen",
+                    side_effect=fake_urlopen,
+                ):
+                    await OpenAIWhisperXRunner(
+                        OpenAIWhisperXRunnerConfig(
+                            base_url="http://localhost:9000/v1",
+                            mp3_bitrate="48k",
+                        )
+                    ).run(request)
+
+                self.assertEqual(captured["transcode_source"], input_path)
+                self.assertEqual(captured["transcode_output"].name, "remote-upload.mp3")
+                self.assertEqual(
+                    mimetypes.guess_type(captured["transcode_output"].name)[0],
+                    "audio/mpeg",
+                )
+                body = captured["body"].decode("utf-8", errors="replace")
+                self.assertIn('filename="remote-upload.mp3"', body)
+                self.assertIn("Content-Type: audio/mpeg", body)
+                self.assertIn("fake mp3", body)
+                self.assertNotIn('filename="video.mp4"', body)
+                log = request.log_path.read_text(encoding="utf-8")
+                self.assertIn("Converting media to MP3", log)
+                self.assertIn("48k", log)
+                self.assertIn("MP3 upload payload ready", log)
 
         asyncio.run(exercise())
 
@@ -377,6 +448,7 @@ class OpenAIWhisperXRunnerTests(unittest.TestCase):
                             base_url="http://localhost:9000/v1",
                             api_key="secret",
                             progress_poll_interval_seconds=0.01,
+                            transcode_to_mp3=False,
                         )
                     ).run(request, on_log=lambda line: log_lines.append(line))
 

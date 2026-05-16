@@ -43,6 +43,7 @@ const defaultOpenaiWhisperxModel = 'large-v2';
 const defaultModelCacheOnly = false;
 const defaultWhisperxBackend: WhisperxBackend = 'cli';
 const defaultOpenaiTimeoutSeconds = '3600';
+const defaultOpenaiMp3Bitrate = '64k';
 const defaultLlmProvider = 'openai';
 const defaultLlmTimeoutSeconds = '60';
 const defaultMaxUploadMb = '512';
@@ -174,6 +175,8 @@ export function AdminPage() {
   const [openaiApiKeyConfigured, setOpenaiApiKeyConfigured] = useState(false);
   const [openaiClearApiKey, setOpenaiClearApiKey] = useState(false);
   const [openaiTimeoutSeconds, setOpenaiTimeoutSeconds] = useState(defaultOpenaiTimeoutSeconds);
+  const [openaiTranscodeToMp3, setOpenaiTranscodeToMp3] = useState(true);
+  const [openaiMp3Bitrate, setOpenaiMp3Bitrate] = useState(defaultOpenaiMp3Bitrate);
   const [openaiModels, setOpenaiModels] = useState<string[]>([]);
   const [openaiModelsBusy, setOpenaiModelsBusy] = useState(false);
   const [nltkDataDir, setNltkDataDir] = useState('');
@@ -271,6 +274,8 @@ export function AdminPage() {
     setOpenaiApiKeyConfigured(nextConfig.whisperxOpenaiApiKeyConfigured);
     setOpenaiClearApiKey(false);
     setOpenaiTimeoutSeconds(String(nextConfig.whisperxOpenaiTimeoutSeconds || 3600));
+    setOpenaiTranscodeToMp3(nextConfig.whisperxOpenaiTranscodeToMp3);
+    setOpenaiMp3Bitrate(nextConfig.whisperxOpenaiMp3Bitrate || defaultOpenaiMp3Bitrate);
     setOpenaiModels([]);
     setNltkDataDir(nextConfig.nltkDataDir ?? '');
     setModelCacheOnly(nextConfig.modelCacheOnly);
@@ -452,6 +457,12 @@ export function AdminPage() {
       if (!Number.isFinite(parsedOpenaiTimeoutSeconds) || parsedOpenaiTimeoutSeconds <= 0) {
         throw new Error('OpenAI timeout seconds 必须是大于 0 的数字。');
       }
+      const normalizedOpenaiMp3Bitrate = openaiMp3Bitrate.trim().toLowerCase();
+      const openaiMp3BitrateMatch = /^([1-9][0-9]{0,3})k$/.exec(normalizedOpenaiMp3Bitrate);
+      const openaiMp3BitrateKbps = openaiMp3BitrateMatch ? Number(openaiMp3BitrateMatch[1]) : 0;
+      if (!openaiMp3BitrateMatch || openaiMp3BitrateKbps < 8 || openaiMp3BitrateKbps > 320) {
+        throw new Error('OpenAI MP3 bitrate 必须是 8k 到 320k 之间的值，例如 64k。');
+      }
       const parsedLlmTimeoutSeconds = Number(llmTimeoutSeconds || defaultLlmTimeoutSeconds);
       if (!Number.isFinite(parsedLlmTimeoutSeconds) || parsedLlmTimeoutSeconds <= 0) {
         throw new Error('LLM timeout seconds 必须是大于 0 的数字。');
@@ -474,6 +485,8 @@ export function AdminPage() {
         whisperxOpenaiApiKey: openaiApiKey,
         whisperxOpenaiClearApiKey: openaiClearApiKey,
         whisperxOpenaiTimeoutSeconds: parsedOpenaiTimeoutSeconds,
+        whisperxOpenaiTranscodeToMp3: openaiTranscodeToMp3,
+        whisperxOpenaiMp3Bitrate: normalizedOpenaiMp3Bitrate,
         modelCacheOnly,
         nltkDataDir,
         maxWhisperxUploadMb: parsedMaxWhisperxUploadMb,
@@ -499,6 +512,8 @@ export function AdminPage() {
       setOpenaiApiKeyConfigured(nextConfig.whisperxOpenaiApiKeyConfigured);
       setOpenaiClearApiKey(false);
       setOpenaiTimeoutSeconds(String(nextConfig.whisperxOpenaiTimeoutSeconds || 3600));
+      setOpenaiTranscodeToMp3(nextConfig.whisperxOpenaiTranscodeToMp3);
+      setOpenaiMp3Bitrate(nextConfig.whisperxOpenaiMp3Bitrate || defaultOpenaiMp3Bitrate);
       setOpenaiModels([]);
       setMaxWhisperxUploadMb(String(nextConfig.maxWhisperxUploadMb));
       setMaxPdfUploadMb(String(nextConfig.maxPdfUploadMb));
@@ -854,6 +869,8 @@ export function AdminPage() {
                           <div className="field"><label className="label" htmlFor="cfg-openai-base-url">OpenAI Base URL</label><input id="cfg-openai-base-url" className="input mono" value={openaiBaseUrl} placeholder="http://localhost:9000/v1" onChange={(event) => { setOpenaiBaseUrl(event.target.value); setOpenaiModels([]); }} /></div>
                           <div className="field"><label className="label" htmlFor="cfg-openai-api-key">OpenAI API Key</label><input id="cfg-openai-api-key" className="input mono" type="password" value={openaiApiKey} placeholder={openaiApiKeyConfigured ? '已配置；留空保持不变' : '未配置则不发送 Authorization'} onChange={(event) => { setOpenaiApiKey(event.target.value); setOpenaiModels([]); }} /></div>
                           <div className="field"><label className="label" htmlFor="cfg-openai-timeout">OpenAI timeout seconds</label><input id="cfg-openai-timeout" className="input mono" value={openaiTimeoutSeconds} onChange={(event) => { setOpenaiTimeoutSeconds(event.target.value); setOpenaiModels([]); }} /></div>
+                          <div className="field"><label className="label" htmlFor="cfg-openai-transcode-mp3">转 MP3 后上传</label><select id="cfg-openai-transcode-mp3" className="select" value={String(openaiTranscodeToMp3)} onChange={(event) => setOpenaiTranscodeToMp3(event.target.value === 'true')}><option value="true">开启</option><option value="false">关闭</option></select></div>
+                          <div className="field"><label className="label" htmlFor="cfg-openai-mp3-bitrate">MP3 bitrate</label><input id="cfg-openai-mp3-bitrate" className="input mono" value={openaiMp3Bitrate} placeholder="64k" onChange={(event) => setOpenaiMp3Bitrate(event.target.value)} /></div>
                           <div className="field"><label className="label" htmlFor="cfg-openai-clear-key">清除 OpenAI Key</label><select id="cfg-openai-clear-key" className="select" value={String(openaiClearApiKey)} onChange={(event) => setOpenaiClearApiKey(event.target.value === 'true')}><option value="false">false</option><option value="true">true</option></select></div>
                           <div className="field field-full">
                             <div className="llm-actions-row">

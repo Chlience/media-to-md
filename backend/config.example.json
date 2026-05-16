@@ -4,6 +4,8 @@
   "whisperx_openai_base_url": "http://localhost:9000/v1",
   "whisperx_openai_api_key": null,
   "whisperx_openai_timeout_seconds": 3600,
+  "whisperx_openai_transcode_to_mp3": true,
+  "whisperx_openai_mp3_bitrate": "64k",
   "whisperx_cli_model": "small",
   "whisperx_openai_model": "large-v2",
   "whisperx_model_dir": ".data/models",

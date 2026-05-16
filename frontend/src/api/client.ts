@@ -105,6 +105,8 @@ export class WhisperXApiClient {
     whisperxOpenaiApiKey?: string | null;
     whisperxOpenaiClearApiKey?: boolean;
     whisperxOpenaiTimeoutSeconds?: number;
+    whisperxOpenaiTranscodeToMp3: boolean;
+    whisperxOpenaiMp3Bitrate: string;
     modelCacheOnly: boolean;
     nltkDataDir?: string | null;
     maxWhisperxUploadMb: number;
@@ -136,6 +138,8 @@ export class WhisperXApiClient {
         whisperx_openai_api_key: blankToNull(params.whisperxOpenaiApiKey),
         whisperx_openai_clear_api_key: params.whisperxOpenaiClearApiKey ?? false,
         whisperx_openai_timeout_seconds: params.whisperxOpenaiTimeoutSeconds ?? 3600,
+        whisperx_openai_transcode_to_mp3: params.whisperxOpenaiTranscodeToMp3,
+        whisperx_openai_mp3_bitrate: params.whisperxOpenaiMp3Bitrate.trim(),
         model_cache_only: params.modelCacheOnly,
         nltk_data_dir: blankToNull(params.nltkDataDir),
         whisperx_args: activeWhisperxArgs,

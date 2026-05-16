@@ -92,6 +92,8 @@ ffmpeg -version
 | `WHISPERX_OPENAI_BASE_URL` | OpenAI 兼容 WhisperX 服务地址，如 `http://localhost:9000/v1`。 |
 | `WHISPERX_OPENAI_API_KEY` | 调用 OpenAI 兼容服务时发送的 Bearer Key。 |
 | `WHISPERX_OPENAI_TIMEOUT_SECONDS` | OpenAI 兼容服务请求超时时间。 |
+| `WHISPERX_OPENAI_TRANSCODE_TO_MP3` | OpenAI 兼容模式请求远端前是否把已接收文件转成临时 MP3，默认开启。 |
+| `WHISPERX_OPENAI_MP3_BITRATE` | 临时 MP3 目标码率，格式如 `64k`，范围 `8k` 到 `320k`。 |
 | `OPENDATALOADER_PDF_ARGS_JSON` | 覆盖 `opendataloader_pdf_args`。 |
 | `MEDIA_TO_MD_MAX_WHISPERX_UPLOAD_MB` / `MEDIA_TO_MD_MAX_PDF_UPLOAD_MB` | 分别覆盖音视频转写和 PDF 解析的最大上传 MB。 |
 | `WHISPERX_ADMIN_USERNAME` / `WHISPERX_ADMIN_PASSWORD` | 覆盖管理员账号。 |
@@ -126,6 +128,8 @@ CLI 参数会转换为对应的 WhisperX CLI flag，例如：
 ### WhisperX OpenAI 兼容模式
 
 设置 `whisperx_backend = "openai"` 后，音视频任务会调用 `whisperx_openai_base_url` 对应的 `/v1/audio/transcriptions`，固定请求 `response_format=srt` 并启用说话人分离；返回的 `result.srt` 会作为字幕保存，`result.txt` 则由该 SRT 删除序号行和时间行后派生。后端不再向远端请求 TXT。
+
+默认情况下，OpenAI 模式会在请求远端前用本机 `ffmpeg` 把已接收的上传文件转成任务目录内的临时 MP3，再把该 MP3 作为 multipart `file` 发送给远端服务。转换参数为 16 kHz、单声道、移除元数据，码率由 `whisperx_openai_mp3_bitrate` 控制（默认 `64k`）。这不会改变原始上传文件和任务 artifact，只是降低 Media-to-MD 到 WhisperX OpenAI 服务之间的第二跳上传体积；如果远端需要原始容器或本机没有 `ffmpeg`，可关闭 `whisperx_openai_transcode_to_mp3`。
 
 管理页拉取 WhisperX OpenAI 模型时会请求 `OpenAI Base URL + /models`，返回后可在下拉框选择，并自动写入 OpenAI 默认模型字段。实际转写时，`whisperx_openai_model` 必须是远端 `/v1/models` 暴露且接受的 id。
 

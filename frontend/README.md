@@ -58,7 +58,7 @@ http://localhost:8000/api
 - 登录弹窗保护管理能力。
 - 支持按任务类型和状态筛选，分页展示。
 - 详情中展示 metadata、artifacts、事件时间线和可滚动运行日志。
-- 运行配置只展示保留的 WhisperX / OpenDataLoader PDF 常用参数。
+- 运行配置只展示保留的 WhisperX / OpenDataLoader PDF 常用参数；OpenAI 兼容 WhisperX 模式可配置请求远端前的临时 MP3 转换开关和码率。
 
 ## 代码结构
 

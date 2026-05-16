@@ -87,6 +87,8 @@ export interface BackendConfig {
   whisperxOpenaiBaseUrl: string | null;
   whisperxOpenaiApiKeyConfigured: boolean;
   whisperxOpenaiTimeoutSeconds: number;
+  whisperxOpenaiTranscodeToMp3: boolean;
+  whisperxOpenaiMp3Bitrate: string;
   modelCacheOnly: boolean;
   whisperxArgs: string[];
   whisperxArgsConfig: Record<string, unknown>;

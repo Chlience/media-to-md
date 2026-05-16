@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
+import re
 from typing import Annotated, Any, Literal
 
 from pydantic import (
@@ -34,6 +35,7 @@ DEFAULT_OUTPUT_FORMATS = ["srt", "txt"]
 DEFAULT_PDF_FORMATS = ["markdown", "text"]
 MARKDOWN_CLEANUP_STRENGTHS = {"off", "conservative", "balanced", "aggressive"}
 MarkdownCleanupStrength = Literal["off", "conservative", "balanced", "aggressive"]
+_MP3_BITRATE_RE = re.compile(r"^([1-9][0-9]{0,3})k$")
 
 
 class JobStatus(str, Enum):
@@ -354,6 +356,8 @@ class ConfigResponse(BaseModel):
     whisperx_openai_base_url: str | None = None
     whisperx_openai_api_key_configured: bool = False
     whisperx_openai_timeout_seconds: float = 3600.0
+    whisperx_openai_transcode_to_mp3: bool = True
+    whisperx_openai_mp3_bitrate: str = "64k"
     model_cache_only: bool
     nltk_data_dir: str | None = None
     whisperx_args: list[str] = Field(default_factory=list)
@@ -427,6 +431,8 @@ class ConfigUpdateRequest(BaseModel):
     whisperx_openai_api_key: str | None = Field(default=None, max_length=4096)
     whisperx_openai_clear_api_key: bool = False
     whisperx_openai_timeout_seconds: float = Field(default=3600.0, gt=0)
+    whisperx_openai_transcode_to_mp3: bool = True
+    whisperx_openai_mp3_bitrate: str = Field(default="64k", max_length=16)
     model_cache_only: bool = False
     nltk_data_dir: str | None = Field(default=None, max_length=4096)
     whisperx_args: dict[str, Any] = Field(default_factory=dict)
@@ -485,6 +491,18 @@ class ConfigUpdateRequest(BaseModel):
         if any(char in text for char in ("\x00", "\n", "\r")):
             raise ValueError("config values must be single-line text")
         return text
+
+    @field_validator("whisperx_openai_mp3_bitrate")
+    @classmethod
+    def normalize_openai_mp3_bitrate(cls, value: str) -> str:
+        text = value.strip().lower()
+        match = _MP3_BITRATE_RE.fullmatch(text)
+        if match is None:
+            raise ValueError("whisperx_openai_mp3_bitrate must look like '64k'")
+        bitrate_kbps = int(match.group(1))
+        if bitrate_kbps < 8 or bitrate_kbps > 320:
+            raise ValueError("whisperx_openai_mp3_bitrate must be between 8k and 320k")
+        return f"{bitrate_kbps}k"
 
 
 class ErrorResponse(BaseModel):

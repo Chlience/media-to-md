@@ -78,6 +78,8 @@ diarize=true
 
 返回的 SRT 会写入 `result.srt`，再删除 SRT 序号行和时间行派生 `result.txt`。
 
+默认情况下，OpenAI 模式会先用本机 `ffmpeg` 把已接收文件转成临时 16 kHz 单声道 MP3，再把该 MP3 作为 multipart `file` 上传给远端，用于降低第二跳请求体积。可用 `whisperx_openai_transcode_to_mp3` 开关关闭，用 `whisperx_openai_mp3_bitrate` 调整码率。
+
 OpenAI 模式只转发适合每次请求覆盖的 `whisperx_openai_args`：`batch_size`, `chunk_size`, `no_align`, `min_speakers`, `max_speakers`, `speaker_embeddings`。设备、模型目录、compute type、diarize model 等由远端 WhisperX 服务启动参数控制。
 
 ## OpenDataLoader PDF
