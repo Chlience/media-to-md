@@ -1,5 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { App, getHashRoute } from './App';
+import { startJobStatusPolling } from './services/jobs';
+import type { JobStatus } from './types/api';
 
 const DEFAULT_UPLOAD_LIMIT_BYTES = 512 * 1024 * 1024;
 const DEFAULT_HEALTH_RESPONSE = {
@@ -125,6 +127,465 @@ describe('hash routing shell', () => {
     expect(screen.getByText(/文件超过最大上传限制/)).toBeInTheDocument();
     expect(screen.getByText('尚未选择文件')).toBeInTheDocument();
     expect(screen.queryByText('too-large.mp4')).not.toBeInTheDocument();
+  });
+
+  it('preserves separate selected files when switching workbench task types', async () => {
+    stubHealthFetch();
+    const { container } = render(<App />);
+    expect(await screen.findByText('接受常见的音频/视频文件，单个文件不超过 512.0 MB。')).toBeInTheDocument();
+
+    const mediaInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const mediaFile = new File(['media'], 'meeting.mp3', { type: 'audio/mpeg' });
+    fireEvent.change(mediaInput, {
+      target: { files: { 0: mediaFile, length: 1, item: () => mediaFile } },
+    });
+    expect(screen.getAllByText('meeting.mp3').length).toBeGreaterThanOrEqual(1);
+
+    fireEvent.click(screen.getByRole('button', { name: /PDF 文档解析/ }));
+    expect(screen.queryByText('meeting.mp3')).not.toBeInTheDocument();
+    const pdfInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const pdfFile = new File(['pdf'], 'contract.pdf', { type: 'application/pdf' });
+    fireEvent.change(pdfInput, {
+      target: { files: { 0: pdfFile, length: 1, item: () => pdfFile } },
+    });
+    expect(screen.getAllByText('contract.pdf').length).toBeGreaterThanOrEqual(1);
+
+    fireEvent.click(screen.getByRole('button', { name: /音视频转写/ }));
+    expect(screen.getAllByText('meeting.mp3').length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText('contract.pdf')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /PDF 文档解析/ }));
+    expect(screen.getAllByText('contract.pdf').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores late results from a replaced same-type workbench job', async () => {
+    let uploadCount = 0;
+    let resolveOldResults: (response: Response) => void = () => undefined;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith('/health')) {
+          return new Response(JSON.stringify(DEFAULT_HEALTH_RESPONSE), {
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (url.endsWith('/jobs/upload')) {
+          uploadCount += 1;
+          return new Response(
+            JSON.stringify({ job_id: uploadCount === 1 ? 'job-old' : 'job-new', status: 'queued' }),
+            { headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        if (url.endsWith('/jobs/job-old/start') || url.endsWith('/jobs/job-new/start')) {
+          expect(init?.method).toBe('POST');
+          return new Response('{}', { headers: { 'Content-Type': 'application/json' } });
+        }
+        if (url.endsWith('/jobs/job-old/status')) {
+          return new Response(
+            JSON.stringify({
+              job_id: 'job-old',
+              status: 'succeeded',
+              task_type: 'whisperx',
+              input_filename: 'old.mp3',
+              input_size_bytes: 3,
+              options: { task_type: 'whisperx', language: 'auto' },
+              artifacts: [],
+            }),
+            { headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        if (url.endsWith('/jobs/job-old/results')) {
+          return new Promise<Response>((resolve) => {
+            resolveOldResults = resolve;
+          });
+        }
+        if (url.endsWith('/jobs/job-new/status')) {
+          return new Response(
+            JSON.stringify({
+              job_id: 'job-new',
+              status: 'running',
+              task_type: 'whisperx',
+              input_filename: 'new.mp3',
+              input_size_bytes: 3,
+              options: { task_type: 'whisperx', language: 'auto' },
+              artifacts: [],
+            }),
+            { headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        return new Response('{}', { headers: { 'Content-Type': 'application/json' } });
+      }),
+    );
+
+    const { container } = render(<App />);
+    expect(await screen.findByText('接受常见的音频/视频文件，单个文件不超过 512.0 MB。')).toBeInTheDocument();
+    const oldInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const oldFile = new File(['old'], 'old.mp3', { type: 'audio/mpeg' });
+    fireEvent.change(oldInput, {
+      target: { files: { 0: oldFile, length: 1, item: () => oldFile } },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '上传并启动任务' }));
+    expect(await screen.findByText('job-old')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).endsWith('/jobs/job-old/results'))).toBe(true),
+    );
+
+    const newInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const newFile = new File(['new'], 'new.mp3', { type: 'audio/mpeg' });
+    fireEvent.change(newInput, {
+      target: { files: { 0: newFile, length: 1, item: () => newFile } },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '上传并启动任务' }));
+    expect(await screen.findByText('job-new')).toBeInTheDocument();
+
+    resolveOldResults(
+      new Response(
+        JSON.stringify({
+          job_id: 'job-old',
+          status: 'succeeded',
+          task_type: 'whisperx',
+          input_filename: 'old.mp3',
+          input_size_bytes: 3,
+          artifacts: [{ name: 'old.md', format: 'markdown', size_bytes: 9, path: 'old.md' }],
+        }),
+        { headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+    await Promise.resolve();
+
+    expect(screen.getByText('job-new')).toBeInTheDocument();
+    expect(screen.queryByText('job-old')).not.toBeInTheDocument();
+    expect(screen.queryByText('下载 artifacts.zip')).not.toBeInTheDocument();
+  });
+
+  it('preserves a submitted workbench job while visiting task management and keeps polling', async () => {
+    let statusCalls = 0;
+    const runningJob = {
+      job_id: 'job-route',
+      status: 'running',
+      task_type: 'whisperx',
+      input_filename: 'lecture.mp3',
+      input_size_bytes: 5,
+      options: { task_type: 'whisperx', language: 'auto' },
+      runtime_phase: {
+        process: 'whisperx',
+        code: 'running',
+        label: '运行中',
+        detail: '后台仍在处理。',
+        stage_percent: 50,
+        source: 'system',
+      },
+      artifacts: [],
+    };
+    const succeededJob = {
+      ...runningJob,
+      status: 'succeeded',
+      runtime_phase: {
+        process: 'whisperx',
+        code: 'succeeded',
+        label: '已完成',
+        detail: '任务已成功完成。',
+        stage_percent: 100,
+        source: 'system',
+      },
+      artifacts: [{ name: 'lecture.md', format: 'markdown', size_bytes: 12, path: 'lecture.md' }],
+    };
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith('/health')) {
+          return new Response(JSON.stringify(DEFAULT_HEALTH_RESPONSE), {
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (url.endsWith('/jobs/upload')) {
+          expect(init?.method).toBe('POST');
+          return new Response(JSON.stringify({ job_id: 'job-route', status: 'queued' }), {
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (url.endsWith('/jobs/job-route/start')) {
+          expect(init?.method).toBe('POST');
+          return new Response('{}', { headers: { 'Content-Type': 'application/json' } });
+        }
+        if (url.endsWith('/jobs/job-route/status')) {
+          statusCalls += 1;
+          return new Response(JSON.stringify(statusCalls === 1 ? runningJob : succeededJob), {
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (url.endsWith('/jobs/job-route/results')) {
+          return new Response(JSON.stringify(succeededJob), {
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        return new Response('{}', { headers: { 'Content-Type': 'application/json' } });
+      }),
+    );
+
+    const { container } = render(<App />);
+    expect(await screen.findByText('接受常见的音频/视频文件，单个文件不超过 512.0 MB。')).toBeInTheDocument();
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const mediaFile = new File(['media'], 'lecture.mp3', { type: 'audio/mpeg' });
+    fireEvent.change(fileInput, {
+      target: { files: { 0: mediaFile, length: 1, item: () => mediaFile } },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '上传并启动任务' }));
+
+    expect(await screen.findByText('job-route')).toBeInTheDocument();
+    expect(await screen.findByText('Running')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /任务管理页/ }));
+    expect(await screen.findByRole('heading', { name: '任务管理页' })).toBeInTheDocument();
+
+    await new Promise((resolve) => window.setTimeout(resolve, 2100));
+
+    fireEvent.click(screen.getByRole('button', { name: /本地转换工作台/ }));
+    expect(await screen.findByText('job-route')).toBeInTheDocument();
+    expect(await screen.findByText('Succeeded')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '下载 artifacts.zip' })).toHaveAttribute(
+      'href',
+      'http://localhost:8000/api/jobs/job-route/artifacts.zip',
+    );
+    expect(statusCalls).toBeGreaterThanOrEqual(2);
+  }, 7000);
+
+  it('keeps submitted audio/video and PDF jobs in independent workbench slots', async () => {
+    const uploads: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith('/health')) {
+          return new Response(JSON.stringify(DEFAULT_HEALTH_RESPONSE), {
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (url.endsWith('/jobs/upload')) {
+          const body = init?.body instanceof FormData ? init.body : null;
+          const taskType = String(body?.get('task_type') ?? 'whisperx');
+          uploads.push(taskType);
+          return new Response(
+            JSON.stringify({ job_id: taskType === 'pdf' ? 'job-pdf' : 'job-media', status: 'queued' }),
+            { headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        if (url.endsWith('/jobs/job-media/start') || url.endsWith('/jobs/job-pdf/start')) {
+          return new Response('{}', { headers: { 'Content-Type': 'application/json' } });
+        }
+        if (url.endsWith('/jobs/job-media/status')) {
+          return new Response(
+            JSON.stringify({
+              job_id: 'job-media',
+              status: 'running',
+              task_type: 'whisperx',
+              input_filename: 'standup.mp3',
+              input_size_bytes: 5,
+              options: { task_type: 'whisperx', language: 'auto' },
+              artifacts: [],
+            }),
+            { headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        if (url.endsWith('/jobs/job-pdf/status')) {
+          return new Response(
+            JSON.stringify({
+              job_id: 'job-pdf',
+              status: 'running',
+              task_type: 'pdf',
+              input_filename: 'brief.pdf',
+              input_size_bytes: 3,
+              options: { task_type: 'pdf', markdown_cleanup_strength: 'balanced' },
+              artifacts: [],
+            }),
+            { headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        return new Response('{}', { headers: { 'Content-Type': 'application/json' } });
+      }),
+    );
+
+    const { container } = render(<App />);
+    expect(await screen.findByText('接受常见的音频/视频文件，单个文件不超过 512.0 MB。')).toBeInTheDocument();
+    const mediaInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const mediaFile = new File(['media'], 'standup.mp3', { type: 'audio/mpeg' });
+    fireEvent.change(mediaInput, {
+      target: { files: { 0: mediaFile, length: 1, item: () => mediaFile } },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '上传并启动任务' }));
+    expect(await screen.findByText('job-media')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /PDF 文档解析/ }));
+    const pdfInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const pdfFile = new File(['pdf'], 'brief.pdf', { type: 'application/pdf' });
+    fireEvent.change(pdfInput, {
+      target: { files: { 0: pdfFile, length: 1, item: () => pdfFile } },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '上传并启动任务' }));
+    expect(await screen.findByText('job-pdf')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /音视频转写/ }));
+    expect(await screen.findByText('job-media')).toBeInTheDocument();
+    expect(screen.queryByText('job-pdf')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /PDF 文档解析/ }));
+    expect(await screen.findByText('job-pdf')).toBeInTheDocument();
+    expect(screen.queryByText('job-media')).not.toBeInTheDocument();
+    expect(uploads).toEqual(['whisperx', 'pdf']);
+  });
+
+  it('restores a persisted workbench job id after a browser reload', async () => {
+    window.localStorage.setItem(
+      'media_to_md_workbench_tasks_v1',
+      JSON.stringify({
+        activeTaskType: 'pdf',
+        slots: {
+          pdf: {
+            jobId: 'job-persisted-pdf',
+            fileMeta: { name: 'restored.pdf', size: 3 },
+            cleanupStrength: 'aggressive',
+          },
+        },
+      }),
+    );
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith('/health')) {
+          return new Response(JSON.stringify(DEFAULT_HEALTH_RESPONSE), {
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (url.endsWith('/jobs/job-persisted-pdf/status')) {
+          return new Response(
+            JSON.stringify({
+              job_id: 'job-persisted-pdf',
+              status: 'running',
+              task_type: 'pdf',
+              input_filename: 'restored.pdf',
+              input_size_bytes: 3,
+              options: { task_type: 'pdf', markdown_cleanup_strength: 'aggressive' },
+              artifacts: [],
+            }),
+            { headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        return new Response('{}', { headers: { 'Content-Type': 'application/json' } });
+      }),
+    );
+
+    render(<App />);
+
+    expect(screen.getByRole('button', { name: /PDF 文档解析/ })).toHaveClass('active');
+    expect(await screen.findByText('job-persisted-pdf')).toBeInTheDocument();
+    expect(screen.getAllByText('restored.pdf').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByLabelText('Markdown 清洗力度')).toHaveValue('aggressive');
+    expect(screen.getByText('Running')).toBeInTheDocument();
+  });
+
+  it('restores a succeeded persisted workbench job with artifact download', async () => {
+    window.localStorage.setItem(
+      'media_to_md_workbench_tasks_v1',
+      JSON.stringify({
+        activeTaskType: 'pdf',
+        slots: {
+          pdf: {
+            jobId: 'job-persisted-done',
+            fileMeta: { name: 'done.pdf', size: 8 },
+            cleanupStrength: 'balanced',
+          },
+        },
+      }),
+    );
+    const statusJob = {
+      job_id: 'job-persisted-done',
+      status: 'succeeded',
+      task_type: 'pdf',
+      input_filename: 'done.pdf',
+      input_size_bytes: 8,
+      options: { task_type: 'pdf', markdown_cleanup_strength: 'balanced' },
+      artifacts: [],
+    };
+    const resultJob = {
+      ...statusJob,
+      artifacts: [{ name: 'done.md', format: 'markdown', size_bytes: 24, path: 'done.md' }],
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith('/health')) {
+          return new Response(JSON.stringify(DEFAULT_HEALTH_RESPONSE), {
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (url.endsWith('/jobs/job-persisted-done/status')) {
+          return new Response(JSON.stringify(statusJob), {
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (url.endsWith('/jobs/job-persisted-done/results')) {
+          return new Response(JSON.stringify(resultJob), {
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        return new Response('{}', { headers: { 'Content-Type': 'application/json' } });
+      }),
+    );
+
+    render(<App />);
+
+    expect(await screen.findByText('job-persisted-done')).toBeInTheDocument();
+    expect(await screen.findByText('Succeeded')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '下载 artifacts.zip' })).toHaveAttribute(
+      'href',
+      'http://localhost:8000/api/jobs/job-persisted-done/artifacts.zip',
+    );
+  });
+
+  it('does not emit success results after polling is stopped during result fetch', async () => {
+    let resolveResults: (status: JobStatus) => void = () => undefined;
+    const api = {
+      fetchStatus: vi.fn(async () => ({
+        jobId: 'job-stop',
+        status: 'succeeded',
+        taskType: 'whisperx',
+        artifacts: [],
+      })),
+      fetchResults: vi.fn(
+        () =>
+          new Promise<JobStatus>((resolve) => {
+            resolveResults = resolve;
+          }),
+      ),
+    };
+    const onStatus = vi.fn();
+    const onSuccessResults = vi.fn();
+
+    const controller = startJobStatusPolling({
+      api: api as never,
+      jobId: 'job-stop',
+      intervalMs: 60_000,
+      onStatus,
+      onSuccessResults,
+    });
+
+    await waitFor(() => expect(api.fetchResults).toHaveBeenCalledTimes(1));
+    controller.stop();
+    resolveResults({
+      jobId: 'job-stop',
+      status: 'succeeded',
+      taskType: 'whisperx',
+      artifacts: [{ name: 'late.md', format: 'markdown', sizeBytes: 4 }],
+    });
+    await Promise.resolve();
+
+    expect(onStatus).toHaveBeenCalledTimes(1);
+    expect(onSuccessResults).not.toHaveBeenCalled();
   });
 
   it('renders admin for /#/admin without browser-history routing', () => {

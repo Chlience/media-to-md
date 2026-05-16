@@ -1,5 +1,5 @@
-import { DragEvent, useEffect, useRef, useState } from 'react';
-import { WhisperXApiClient, UploadableFile } from '../api/client';
+import { DragEvent, useEffect, useRef } from 'react';
+import { WhisperXApiClient } from '../api/client';
 import {
   RuntimeProgressBar,
   runtimePercentText,
@@ -16,31 +16,17 @@ import {
 import {
   JobStatus,
   PdfCleanupStrength,
-  pdfCleanupStrengthBalanced,
   taskTypePdf,
   taskTypeWhisperx,
   TaskType,
-  UploadLimit,
-  UploadLimits,
 } from '../types/api';
-import { startJobStatusPolling } from '../services/jobs';
-
-type LanguageMode = 'auto' | 'manual';
+import {
+  LanguageMode,
+  WorkbenchFileMeta,
+  WorkbenchTasksController,
+} from '../services/workbenchTasks';
 
 const api = new WhisperXApiClient();
-
-function fileToUploadable(file: File): UploadableFile {
-  return file as UploadableFile;
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function fileSizeLimitError(file: File, limit: UploadLimit): string | null {
-  if (file.size <= limit.maxBytes) return null;
-  return `文件超过最大上传限制：最大 ${formatBytes(limit.maxBytes)}，当前 ${formatBytes(file.size)}。`;
-}
 
 function resolveWhisperxPhase(job: JobStatus | null) {
   if (!job) {
@@ -107,16 +93,35 @@ function resolveWhisperxPhase(job: JobStatus | null) {
   };
 }
 
-function fileInfoLabel(job: JobStatus | null, file: File | null): string {
+function fileInfoLabel(
+  job: JobStatus | null,
+  file: File | null,
+  fileMeta: WorkbenchFileMeta | null,
+): string {
   if (job) {
     const isPdfJob = job.taskType === taskTypePdf;
-    const size = formatBytes(job.inputSizeBytes);
+    const size = formatBytes(job.inputSizeBytes ?? fileMeta?.size);
     return isPdfJob
       ? `大小 ${size}`
       : `时长 ${formatDuration(job.inputDurationSeconds)} · 大小 ${size}`;
   }
-  if (file) return `大小 ${formatBytes(file.size)}`;
+  const size = file?.size ?? fileMeta?.size;
+  if (size !== undefined && size !== null) return `大小 ${formatBytes(size)}`;
   return '—';
+}
+
+function fileNameLabel(
+  job: JobStatus | null,
+  file: File | null,
+  fileMeta: WorkbenchFileMeta | null,
+): string {
+  return job?.inputFilename ?? file?.name ?? fileMeta?.name ?? '尚未选择文件';
+}
+
+function selectedFileLabel(file: File | null, fileMeta: WorkbenchFileMeta | null): string | null {
+  if (file) return file.name;
+  if (fileMeta) return `${fileMeta.name}（刷新后需重新选择）`;
+  return null;
 }
 
 function WhisperxPhaseModule({ job }: { job: JobStatus | null }) {
@@ -137,53 +142,26 @@ function WhisperxPhaseModule({ job }: { job: JobStatus | null }) {
   );
 }
 
-export function WorkbenchPage() {
+export function WorkbenchPage({ workbench }: { workbench: WorkbenchTasksController }) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const pollerRef = useRef<{ stop(): void } | null>(null);
-  const [taskType, setTaskType] = useState<TaskType>(taskTypeWhisperx);
-  const [languageMode, setLanguageMode] = useState<LanguageMode>('auto');
-  const [language, setLanguage] = useState('');
-  const [cleanupStrength, setCleanupStrength] =
-    useState<PdfCleanupStrength>(pdfCleanupStrengthBalanced);
-  const [file, setFile] = useState<File | null>(null);
-  const [job, setJob] = useState<JobStatus | null>(null);
-  const [isSubmitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [uploadLimits, setUploadLimits] = useState<UploadLimits | null>(null);
-  const [uploadLimitsError, setUploadLimitsError] = useState<string | null>(null);
-
-  useEffect(() => () => pollerRef.current?.stop(), []);
+  const taskType = workbench.activeTaskType;
+  const {
+    file,
+    fileMeta,
+    job,
+    error,
+    isSubmitting,
+    languageMode,
+    language,
+    cleanupStrength,
+  } = workbench.activeSlot;
+  const currentUploadLimit = workbench.currentUploadLimit;
 
   useEffect(() => {
-    let active = true;
-    void api
-      .health()
-      .then((response) => {
-        if (!active) return;
-        if (!response.uploadLimits) {
-          throw new Error('后端 /health 未返回上传限制。');
-        }
-        setUploadLimits(response.uploadLimits);
-        setUploadLimitsError(null);
-      })
-      .catch((nextError) => {
-        if (!active) return;
-        const message = `无法读取上传限制：${errorMessage(nextError)}`;
-        setUploadLimits(null);
-        setUploadLimitsError(message);
-        setError((currentError) => currentError ?? message);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
+    if (!file && inputRef.current) inputRef.current.value = '';
+  }, [file, taskType]);
 
-  const currentUploadLimit = uploadLimits?.[taskType] ?? null;
-  const requireUploadLimit = (): UploadLimit | null => {
-    if (currentUploadLimit) return currentUploadLimit;
-    setError(uploadLimitsError ?? '正在读取后端上传限制，请稍后再选择文件。');
-    return null;
-  };
+  const requireUploadLimit = () => workbench.requireUploadLimit();
 
   const acceptedCopy =
     currentUploadLimit === null
@@ -192,44 +170,14 @@ export function WorkbenchPage() {
         ? `接受常见的 PDF 文档，单个文件不超过 ${formatBytes(currentUploadLimit.maxBytes)}。`
         : `接受常见的音频/视频文件，单个文件不超过 ${formatBytes(currentUploadLimit.maxBytes)}。`;
 
-  const reset = () => {
-    pollerRef.current?.stop();
-    pollerRef.current = null;
-    setFile(null);
-    setJob(null);
-    setError(null);
-    setSubmitting(false);
-    if (inputRef.current) inputRef.current.value = '';
-  };
-
   const switchTaskType = (next: TaskType) => {
     if (next === taskType) return;
-    setTaskType(next);
-    reset();
+    workbench.switchTaskType(next);
   };
 
   const selectFile = (nextFile: File | null) => {
-    setJob(null);
-    if (!nextFile) {
-      setFile(null);
-      setError(null);
-      return;
-    }
-    const limit = requireUploadLimit();
-    if (!limit) {
-      setFile(null);
-      if (inputRef.current) inputRef.current.value = '';
-      return;
-    }
-    const sizeError = fileSizeLimitError(nextFile, limit);
-    if (sizeError) {
-      setFile(null);
-      setError(sizeError);
-      if (inputRef.current) inputRef.current.value = '';
-      return;
-    }
-    setFile(nextFile);
-    setError(null);
+    const accepted = workbench.selectFile(nextFile);
+    if (!accepted && inputRef.current) inputRef.current.value = '';
   };
 
   const onDrop = (event: DragEvent<HTMLDivElement>) => {
@@ -241,60 +189,7 @@ export function WorkbenchPage() {
     selectFile(event.dataTransfer.files.item(0));
   };
 
-  const submit = async () => {
-    if (!file) {
-      setError((currentError) => currentError ?? '请先选择一个文件。');
-      return;
-    }
-    const limit = requireUploadLimit();
-    if (!limit) return;
-    const sizeError = fileSizeLimitError(file, limit);
-    if (sizeError) {
-      setFile(null);
-      setError(sizeError);
-      if (inputRef.current) inputRef.current.value = '';
-      return;
-    }
-    pollerRef.current?.stop();
-    setSubmitting(true);
-    setError(null);
-    try {
-      const uploaded = await api.uploadAndStart({
-        file: fileToUploadable(file),
-        options:
-          taskType === taskTypePdf
-            ? {
-                taskType: taskTypePdf,
-                markdownCleanupStrength: cleanupStrength,
-              }
-            : {
-                taskType: taskTypeWhisperx,
-                language: languageMode === 'auto' ? 'auto' : language.trim() || 'auto',
-              },
-      });
-      const initial: JobStatus = {
-        jobId: uploaded.jobId,
-        status: uploaded.status,
-        taskType,
-        inputFilename: file.name,
-        inputSizeBytes: file.size,
-        artifacts: [],
-      };
-      setJob(initial);
-      pollerRef.current = startJobStatusPolling({
-        api,
-        jobId: uploaded.jobId,
-        intervalMs: 2000,
-        onStatus: setJob,
-        onSuccessResults: setJob,
-        onError: (nextError) => setError(errorMessage(nextError)),
-      });
-    } catch (nextError) {
-      setError(errorMessage(nextError));
-    } finally {
-      setSubmitting(false);
-    }
-  };
+  const selectedLabel = selectedFileLabel(file, fileMeta);
 
   return (
     <AppShell activeRoute="workbench">
@@ -306,7 +201,7 @@ export function WorkbenchPage() {
 
         <div className="grid-12">
           <div className="span-5">
-            <Box title="提交任务" subtitle="切换类型会清空文件、状态和错误">
+            <Box title="提交任务" subtitle="切换类型会保留各类型当前任务、文件和状态">
               <div className="segmented" role="tablist" aria-label="Task type">
                 <button
                   className={taskType === taskTypeWhisperx ? 'active' : undefined}
@@ -344,11 +239,12 @@ export function WorkbenchPage() {
                   <div className="drop-icon">↑</div>
                   <h3>拖拽文件到这里，或点击选择文件</h3>
                   <p className="small">{acceptedCopy}</p>
-                  {file ? <div className="selected-file">{file.name}</div> : <div style={{ height: 12 }} />}
+                  {selectedLabel ? <div className="selected-file">{selectedLabel}</div> : <div style={{ height: 12 }} />}
                   <button className="btn" type="button" disabled={!currentUploadLimit}>
                     选择文件
                   </button>
                   <input
+                    key={taskType}
                     ref={inputRef}
                     type="file"
                     accept={taskType === taskTypePdf ? 'application/pdf,.pdf' : 'audio/*,video/*'}
@@ -370,7 +266,7 @@ export function WorkbenchPage() {
                       id="language-mode"
                       className="select"
                       value={languageMode}
-                      onChange={(event) => setLanguageMode(event.target.value as LanguageMode)}
+                      onChange={(event) => workbench.setLanguageMode(event.target.value as LanguageMode)}
                     >
                       <option value="auto">自动识别</option>
                       <option value="manual">手动指定</option>
@@ -384,7 +280,7 @@ export function WorkbenchPage() {
                       id="language-code"
                       className="input"
                       value={language}
-                      onChange={(event) => setLanguage(event.target.value)}
+                      onChange={(event) => workbench.setLanguage(event.target.value)}
                       placeholder="默认 auto；手动可填 en、zh、ja"
                       disabled={languageMode === 'auto'}
                     />
@@ -400,7 +296,7 @@ export function WorkbenchPage() {
                       id="cleanup-strength"
                       className="select"
                       value={cleanupStrength}
-                      onChange={(event) => setCleanupStrength(event.target.value as PdfCleanupStrength)}
+                      onChange={(event) => workbench.setCleanupStrength(event.target.value as PdfCleanupStrength)}
                     >
                       <option value="off">关闭</option>
                       <option value="conservative">保守</option>
@@ -419,7 +315,7 @@ export function WorkbenchPage() {
 
               <div style={{ height: 16 }} />
               <div className="btn-row submit-row">
-                <button className="btn btn-primary" type="button" onClick={submit} disabled={isSubmitting || !currentUploadLimit}>
+                <button className="btn btn-primary" type="button" onClick={() => void workbench.submit()} disabled={isSubmitting || !currentUploadLimit}>
                   {isSubmitting ? '提交中…' : currentUploadLimit ? '上传并启动任务' : '读取上传限制中…'}
                 </button>
               </div>
@@ -431,10 +327,10 @@ export function WorkbenchPage() {
               <MetaList
                 items={[
                   { label: '任务 ID', value: job?.jobId ?? '尚未创建', mono: true },
-                  { label: '文件名', value: job?.inputFilename ?? file?.name ?? '尚未选择文件' },
+                  { label: '文件名', value: fileNameLabel(job, file, fileMeta) },
                   {
                     label: '文件信息',
-                    value: fileInfoLabel(job, file),
+                    value: fileInfoLabel(job, file, fileMeta),
                   },
                 ]}
               />

@@ -20,10 +20,14 @@ export function startJobStatusPolling(params: {
   let stopped = false;
   let timer: ReturnType<typeof setInterval> | null = null;
 
-  const stop = () => {
-    stopped = true;
+  const clearTimer = () => {
     if (timer !== null) clearInterval(timer);
     timer = null;
+  };
+
+  const stop = () => {
+    stopped = true;
+    clearTimer();
   };
 
   const refresh = async () => {
@@ -32,10 +36,13 @@ export function startJobStatusPolling(params: {
       if (stopped) return;
       params.onStatus(status);
       if (!isTerminalStatus(status.status)) return;
-      stop();
+      clearTimer();
       if (status.status === 'succeeded' && params.onSuccessResults) {
-        params.onSuccessResults(await params.api.fetchResults(params.jobId));
+        const results = await params.api.fetchResults(params.jobId);
+        if (stopped) return;
+        params.onSuccessResults(results);
       }
+      stopped = true;
     } catch (error) {
       if (!stopped) params.onError?.(error);
     }
