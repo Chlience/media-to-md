@@ -13,13 +13,17 @@ def test_create_job_writes_canonical_manifest(tmp_path, monkeypatch):
     monkeypatch.setattr(storage_module, "probe_media_duration_seconds", lambda _: 12.5)
     storage = JobStorage(tmp_path)
     manifest = storage.create_job(
-        BytesIO(b"audio"), "../My Audio.wav", JobOptions(model="base", language="auto")
+        BytesIO(b"audio"),
+        "../My Audio.wav",
+        JobOptions(model="base", language="auto"),
+        content_type="audio/WAV; charset=binary",
     )
 
     assert manifest.schema_version == 1
     assert manifest.job_id
     assert manifest.status == JobStatus.queued
     assert manifest.input_filename == "My_Audio.wav"
+    assert manifest.input_content_type == "audio/wav"
     assert manifest.input_size_bytes == 5
     assert manifest.input_duration_seconds == 12.5
     assert manifest.options.model == "base"
@@ -31,6 +35,7 @@ def test_create_job_writes_canonical_manifest(tmp_path, monkeypatch):
 
     reconstructed = storage.read_manifest(manifest.job_id)
     assert reconstructed.job_id == manifest.job_id
+    assert reconstructed.input_content_type == "audio/wav"
     assert reconstructed.input_size_bytes == 5
     assert reconstructed.input_duration_seconds == 12.5
     assert reconstructed.artifacts == []

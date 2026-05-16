@@ -54,6 +54,39 @@ _OPENAI_CONFIG_FIELD_NAMES: frozenset[str] = frozenset(
     }
 )
 
+_AUDIO_UPLOAD_CONTENT_TYPES: Mapping[str, str] = {
+    ".aac": "audio/aac",
+    ".adts": "audio/aac",
+    ".aif": "audio/aiff",
+    ".aifc": "audio/aiff",
+    ".aiff": "audio/aiff",
+    ".amr": "audio/amr",
+    ".ape": "audio/ape",
+    ".au": "audio/basic",
+    ".caf": "audio/x-caf",
+    ".flac": "audio/flac",
+    ".m2a": "audio/mpeg",
+    ".m3a": "audio/mpeg",
+    ".m4a": "audio/mp4",
+    ".m4b": "audio/mp4",
+    ".mka": "audio/x-matroska",
+    ".mp2": "audio/mpeg",
+    ".mp2a": "audio/mpeg",
+    ".mp3": "audio/mpeg",
+    ".mp4a": "audio/mp4",
+    ".mpa": "audio/mpeg",
+    ".mpga": "audio/mpeg",
+    ".oga": "audio/ogg",
+    ".ogg": "audio/ogg",
+    ".opus": "audio/ogg",
+    ".ra": "audio/x-pn-realaudio",
+    ".snd": "audio/basic",
+    ".spx": "audio/ogg",
+    ".wav": "audio/wav",
+    ".weba": "audio/webm",
+    ".wma": "audio/x-ms-wma",
+}
+
 
 @dataclass(frozen=True)
 class OpenAIWhisperXRunnerConfig:
@@ -77,6 +110,7 @@ class OpenAIWhisperXRunRequest:
     log_path: Path
     options: WhisperXOptions
     request_id: str | None = None
+    input_content_type: str | None = None
 
 
 @dataclass(frozen=True)
@@ -236,6 +270,35 @@ def _escape_header_value(value: str) -> str:
         .replace("\r", " ")
         .replace("\n", " ")
     )
+
+
+def _normalize_content_type(content_type: str | None) -> str | None:
+    normalized = (content_type or "").split(";", 1)[0].strip().lower()
+    return normalized or None
+
+
+def _guess_upload_content_type(
+    path: Path, content_type: str | None = None
+) -> str:
+    normalized = _normalize_content_type(content_type)
+    if normalized and normalized != "application/octet-stream":
+        return normalized
+    guessed = mimetypes.guess_type(path.name)[0]
+    if guessed:
+        return guessed
+    return _AUDIO_UPLOAD_CONTENT_TYPES.get(
+        path.suffix.lower(), "application/octet-stream"
+    )
+
+
+def _is_audio_upload_path(path: Path, content_type: str | None = None) -> bool:
+    normalized = _normalize_content_type(content_type)
+    if normalized and normalized.startswith("audio/"):
+        return True
+    suffix = path.suffix.lower()
+    if suffix in _AUDIO_UPLOAD_CONTENT_TYPES:
+        return True
+    return _guess_upload_content_type(path, normalized).lower().startswith("audio/")
 
 
 def encode_multipart_form_data(
@@ -422,6 +485,11 @@ class OpenAIWhisperXRunner:
             upload_path = await self._prepare_upload_path(
                 request, Path(upload_tmp), on_log, on_progress
             )
+            upload_content_type = (
+                request.input_content_type
+                if upload_path == request.input_path
+                else None
+            )
             post_task = asyncio.create_task(
                 asyncio.to_thread(
                     self._post_transcription,
@@ -429,6 +497,7 @@ class OpenAIWhisperXRunner:
                     fields,
                     upload_path,
                     extra_headers,
+                    upload_content_type,
                 )
             )
             progress_task = (
@@ -471,6 +540,16 @@ class OpenAIWhisperXRunner:
         on_progress: ProgressCallback | None,
     ) -> Path:
         if not self.config.transcode_to_mp3:
+            return request.input_path
+        if _is_audio_upload_path(request.input_path, request.input_content_type):
+            await self._log(
+                request,
+                on_log,
+                (
+                    "Skipping MP3 conversion for audio input before "
+                    f"OpenAI-compatible upload: {request.input_path.name}."
+                ),
+            )
             return request.input_path
         target_path = temp_dir / "remote-upload.mp3"
         if on_progress is not None:
@@ -671,11 +750,10 @@ class OpenAIWhisperXRunner:
         fields: Sequence[tuple[str, str]],
         input_path: Path,
         extra_headers: Mapping[str, str] | None = None,
+        input_content_type: str | None = None,
     ) -> str:
         content = input_path.read_bytes()
-        content_type = (
-            mimetypes.guess_type(input_path.name)[0] or "application/octet-stream"
-        )
+        content_type = _guess_upload_content_type(input_path, input_content_type)
         body, multipart_content_type = encode_multipart_form_data(
             fields, ("file", input_path.name, content, content_type)
         )
@@ -777,6 +855,7 @@ class JobStorageOpenAIWhisperXRunner(OpenAIWhisperXRunner):
             log_path=self.storage.resolve_job_relative(job_id, manifest.log_path),
             options=options_from_job_options(manifest.options),
             request_id=job_id,
+            input_content_type=manifest.input_content_type,
         )
 
         async def record_log_event(line: str) -> None:

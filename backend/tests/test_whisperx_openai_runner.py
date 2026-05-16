@@ -347,6 +347,144 @@ class OpenAIWhisperXRunnerTests(unittest.TestCase):
 
         asyncio.run(exercise())
 
+    def test_runner_skips_mp3_conversion_for_audio_inputs_when_enabled(self):
+        audio_filenames = [
+            "audio.mp3",
+            "audio.wav",
+            "audio.m4a",
+            "audio.flac",
+            "audio.ogg",
+            "audio.opus",
+            "audio.aac",
+            "audio.weba",
+            "audio.mka",
+            "audio.caf",
+        ]
+
+        async def run_case(filename: str):
+            with tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                input_path = root / filename
+                input_path.write_bytes(b"native audio")
+                request = OpenAIWhisperXRunRequest(
+                    input_path=input_path,
+                    output_dir=root / "output",
+                    log_path=root / "logs" / "job.log",
+                    options=WhisperXOptions(model="small"),
+                )
+                captured = {}
+
+                class FakeResponse:
+                    status = 200
+
+                    def __enter__(self):
+                        return self
+
+                    def __exit__(self, *args):
+                        return None
+
+                    def read(self):
+                        return b"1\n00:00:00,000 --> 00:00:01,000\nok\n"
+
+                async def fail_transcode(self, source_path, output_path):
+                    raise AssertionError(
+                        f"audio input must not be transcoded: {source_path.name}"
+                    )
+
+                def fake_urlopen(http_request, timeout):
+                    captured["body"] = http_request.data
+                    captured["headers"] = dict(http_request.header_items())
+                    return FakeResponse()
+
+                with mock.patch.object(
+                    OpenAIWhisperXRunner,
+                    "_transcode_to_mp3",
+                    fail_transcode,
+                ), mock.patch(
+                    "app.whisperx_openai_runner.urllib.request.urlopen",
+                    side_effect=fake_urlopen,
+                ):
+                    await OpenAIWhisperXRunner(
+                        OpenAIWhisperXRunnerConfig(
+                            base_url="http://localhost:9000/v1",
+                        )
+                    ).run(request)
+
+                body = captured["body"].decode("utf-8", errors="replace")
+                self.assertIn(f'filename="{filename}"', body)
+                self.assertIn("native audio", body)
+                self.assertIn("Content-Type: audio/", body)
+                self.assertNotIn('filename="remote-upload.mp3"', body)
+                log = request.log_path.read_text(encoding="utf-8")
+                self.assertIn("Skipping MP3 conversion for audio input", log)
+                self.assertNotIn("Converting media to MP3", log)
+
+        async def exercise():
+            for filename in audio_filenames:
+                with self.subTest(filename=filename):
+                    await run_case(filename)
+
+        asyncio.run(exercise())
+
+    def test_runner_skips_mp3_conversion_for_audio_upload_content_type(self):
+        async def exercise():
+            with tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                input_path = root / "browser-recording.webm"
+                input_path.write_bytes(b"opus audio")
+                request = OpenAIWhisperXRunRequest(
+                    input_path=input_path,
+                    output_dir=root / "output",
+                    log_path=root / "logs" / "job.log",
+                    options=WhisperXOptions(model="small"),
+                    input_content_type="audio/webm; codecs=opus",
+                )
+                captured = {}
+
+                class FakeResponse:
+                    status = 200
+
+                    def __enter__(self):
+                        return self
+
+                    def __exit__(self, *args):
+                        return None
+
+                    def read(self):
+                        return b"1\n00:00:00,000 --> 00:00:01,000\nok\n"
+
+                async def fail_transcode(self, source_path, output_path):
+                    raise AssertionError(
+                        f"audio upload must not be transcoded: {source_path.name}"
+                    )
+
+                def fake_urlopen(http_request, timeout):
+                    captured["body"] = http_request.data
+                    return FakeResponse()
+
+                with mock.patch.object(
+                    OpenAIWhisperXRunner,
+                    "_transcode_to_mp3",
+                    fail_transcode,
+                ), mock.patch(
+                    "app.whisperx_openai_runner.urllib.request.urlopen",
+                    side_effect=fake_urlopen,
+                ):
+                    await OpenAIWhisperXRunner(
+                        OpenAIWhisperXRunnerConfig(
+                            base_url="http://localhost:9000/v1",
+                        )
+                    ).run(request)
+
+                body = captured["body"].decode("utf-8", errors="replace")
+                self.assertIn('filename="browser-recording.webm"', body)
+                self.assertIn("Content-Type: audio/webm", body)
+                self.assertNotIn('filename="remote-upload.mp3"', body)
+                log = request.log_path.read_text(encoding="utf-8")
+                self.assertIn("Skipping MP3 conversion for audio input", log)
+
+        asyncio.run(exercise())
+
     def test_runner_polls_runtime_progress_when_sidecar_is_available(self):
         async def exercise():
             with tempfile.TemporaryDirectory() as tmp:

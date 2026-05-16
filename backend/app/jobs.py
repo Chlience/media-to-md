@@ -40,12 +40,14 @@ class JobService:
         filename: str,
         options: DiscriminatedJobOptions,
         *,
+        content_type: str | None = None,
         max_input_size_bytes: int | None = None,
     ) -> JobManifest:
         return self.storage.create_job(
             fileobj,
             filename,
             options,
+            content_type=content_type,
             max_input_size_bytes=max_input_size_bytes,
         )
 

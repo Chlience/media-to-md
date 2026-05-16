@@ -33,6 +33,11 @@ def sanitize_filename(filename: str) -> str:
     return name or "upload"
 
 
+def normalize_content_type(content_type: str | None) -> str | None:
+    normalized = (content_type or "").split(";", 1)[0].strip().lower()
+    return normalized or None
+
+
 def probe_media_duration_seconds(
     path: Path, timeout_seconds: float = 10
 ) -> float | None:
@@ -110,6 +115,7 @@ class JobStorage:
         filename: str,
         options: DiscriminatedJobOptions,
         *,
+        content_type: str | None = None,
         max_input_size_bytes: int | None = None,
     ) -> JobManifest:
         job_id = uuid.uuid4().hex
@@ -141,6 +147,7 @@ class JobStorage:
             created_at=now,
             updated_at=now,
             input_filename=stored_name,
+            input_content_type=normalize_content_type(content_type),
             input_size_bytes=input_size_bytes,
             input_duration_seconds=input_duration_seconds,
             options=options,
@@ -156,6 +163,7 @@ class JobStorage:
             status=JobStatus.queued,
             data={
                 "input_filename": stored_name,
+                "input_content_type": normalize_content_type(content_type),
                 "input_size_bytes": input_size_bytes,
                 "input_duration_seconds": input_duration_seconds,
             },

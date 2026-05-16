@@ -252,6 +252,7 @@ class JobManifest(BaseModel):
     created_at: str
     updated_at: str
     input_filename: str
+    input_content_type: str | None = None
     input_size_bytes: int | None = Field(default=None, ge=0)
     input_duration_seconds: float | None = Field(default=None, ge=0)
     options: DiscriminatedJobOptions

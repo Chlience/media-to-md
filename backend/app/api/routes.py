@@ -560,6 +560,7 @@ async def upload_job(
                 file.file,
                 file.filename or "upload",
                 options,
+                content_type=file.content_type,
                 max_input_size_bytes=limit_bytes,
             )
         except InputTooLargeError as exc:
@@ -596,6 +597,7 @@ async def upload_job(
             file.file,
             file.filename or "upload",
             options,
+            content_type=file.content_type,
             max_input_size_bytes=limit_bytes,
         )
     except InputTooLargeError as exc:
